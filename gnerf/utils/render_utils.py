@@ -10,6 +10,7 @@ except ImportError:
     from typing_extensions import Literal
 
 import torch
+from tqdm import tqdm
 from datasets.utils import Rays, namedtuple_map
 from torch.utils.data._utils.collate import collate, default_collate_fn_map
 
@@ -44,7 +45,7 @@ def render_image_with_occgrid(
     cone_angle: float = 0.0,
     alpha_thre: float = 0.0,
     # test options
-    test_chunk_size: int = int(81920 / 2),
+    test_chunk_size: int = int(81920 / 256),
     # only useful for dnerf
     timestamps: Optional[torch.Tensor] = None,
 ):
@@ -65,7 +66,7 @@ def render_image_with_occgrid(
         if radiance_field.training
         else test_chunk_size
     )
-    for i in range(0, num_rays, chunk):
+    for i in tqdm(range(0, num_rays, chunk)):
         chunk_rays = namedtuple_map(lambda r: r[i : i + chunk], rays)
 
         rays_o = chunk_rays.origins
