@@ -167,7 +167,7 @@ class OptixKNN(BaseKNN):
         super().__init__(config)
 
         self.cknn = optix_knn.S_CUDA_KNN()
-        optix_knn.CUDA_KNN_Init(11.3449, self.cknn)
+        optix_knn.CUDA_KNN_Init(1.13449, self.cknn)
 
     def get_nearest_neighbours(self, query: torch.Tensor, points: torch.Tensor) -> torch.Tensor:
         """

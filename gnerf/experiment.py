@@ -243,30 +243,30 @@ class Trainer(nn.Module):
             #         sigma_loss += calculate_lod_sigma_loss(resolution, stds)
             #         i += 1
 
-            # if self.distance_field is not None:
-            #     # Normalize points to aabb for grid_sample
-            #     means = self.radiance_field.mlp_base.encoding.get_means()
-            #     means = denormalize_points(means, self.config.model.aabb)
+            if self.distance_field is not None:
+                # Normalize points to aabb for grid_sample
+                means = self.radiance_field.mlp_base.encoding.get_means()
+                means = denormalize_points(means, self.config.model.aabb)
 
-            #     # Rotate means 90 degrees around y axis
-            #     rot = torch.tensor([[0, 0, 1],
-            #                         [0, 1, 0],
-            #                         [-1, 0, 0]], dtype=means.dtype, device=means.device)
-            #     means = means @ rot.T
-            #     grid_coords = points_to_grid_coords(means, self.config.model.aabb)
-            #     grid_coords = grid_coords.view(1, -1, 1, 1, 3)  # shape (1, N, 1, 1, 3)
+                # Rotate means 90 degrees around y axis
+                rot = torch.tensor([[0, 0, 1],
+                                    [0, 1, 0],
+                                    [-1, 0, 0]], dtype=means.dtype, device=means.device)
+                means = means @ rot.T
+                grid_coords = points_to_grid_coords(means, self.config.model.aabb)
+                grid_coords = grid_coords.view(1, -1, 1, 1, 3)  # shape (1, N, 1, 1, 3)
 
-            #     # Sample the distance field
-            aabb = self.config.model.aabb.to('cuda')
-            #     distances = trilinear_interpolation(self.distance_field, means, aabb)
+                # Sample the distance field
+                aabb = self.config.model.aabb.to('cuda')
+                distances = trilinear_interpolation(self.distance_field, means, aabb)
 
             loss += calculate_smooth_l1_loss(rgb, pixels)
-            # if self.config.weight_surface:
-            #     if step > self.config.surface_loss_swithch_step:
-            #         surf_loss = weighted_squared_gausses_distance.sum() * self.config.weight_surface
-            #     else:
-            #         surf_loss = distances.mean() * 1e-2
-            #     loss += surf_loss
+            if self.config.weight_surface:
+                if step > self.config.surface_loss_swithch_step:
+                    surf_loss = weighted_squared_gausses_distance.sum() * self.config.weight_surface
+                else:
+                    surf_loss = distances.mean() * 1e-2
+                loss += surf_loss
             if self.config.weight_sigma and (not self.config.model.fixed_std):
                 loss += self.config.weight_sigma * loss_warm_up * sigma_loss
             if self.config.weight_mip:

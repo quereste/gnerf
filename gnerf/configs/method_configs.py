@@ -18,7 +18,7 @@ method_configs["gnerf"] = TrainerConfig(
     random_seed=42,
     dataset=NeRFSyntheticDatasetConfig(),
     model=LagHashRadianceFieldConfig(
-        knn_algorithm=FaissKNNConfig()
+        knn_algorithm=OptixKNNConfig()
     )
 )
 

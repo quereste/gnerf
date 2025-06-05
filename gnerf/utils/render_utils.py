@@ -45,7 +45,7 @@ def render_image_with_occgrid(
     cone_angle: float = 0.0,
     alpha_thre: float = 0.0,
     # test options
-    test_chunk_size: int = int(81920 / 256),
+    test_chunk_size: int = int(81920),
     # only useful for dnerf
     timestamps: Optional[torch.Tensor] = None,
 ):
@@ -66,6 +66,7 @@ def render_image_with_occgrid(
         if radiance_field.training
         else test_chunk_size
     )
+    # for i in range(0, num_rays, chunk):
     for i in tqdm(range(0, num_rays, chunk)):
         chunk_rays = namedtuple_map(lambda r: r[i : i + chunk], rays)
 

@@ -65,16 +65,16 @@ class SplashEncoding(nn.Module):
         pts1 = np.asarray(pcd1.points)
         pts2 = np.asarray(pcd2.points)
         pts = np.concatenate([pts1, pts2], axis=0)
-        # if pts.shape[0] < self.total_gaus:
-        #     raise ValueError(f"Not enough points in merged PLY files: {pts.shape[0]} < {self.total_gaus}")
-        # idx = np.random.choice(pts.shape[0], self.total_gaus, replace=False)
-        # pts = pts[idx]
+
+        # if pts.shape[0] > 40000:
+        #     idx = np.random.choice(pts.shape[0], 40000, replace=False)
+        #     pts = pts[idx]
+
         self.means = torch.tensor(pts, dtype=torch.float32, device='cuda')
 
         print(f"Loaded pointclud with {self.means.shape} points.")
 
         return self.means.shape[0]
-
 
 
     def update_factor(self):

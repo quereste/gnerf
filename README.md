@@ -36,7 +36,7 @@ cd gnerf/lagrangian_hash/knn
 # Optix Compile
 nvcc -ptx -arch=sm_86 -o shaders.cu.ptx shaders.cu -I/workspace/gnerf/NVIDIA-OptiX-SDK-7.6.0-linux64-x86_64/include -I/usr/local/cuda/include
 
-#Cuda Compile
+# Cuda Compile
 nvcc -Xcompiler -fPIC -c KNN.cu -o KNN.o \
   --gpu-architecture=compute_86 --gpu-code=sm_86 \
   -I/workspace/gnerf/NVIDIA-OptiX-SDK-7.6.0-linux64-x86_64/include \
