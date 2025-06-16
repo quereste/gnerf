@@ -14,6 +14,10 @@
 
 struct S_CUDA_KNN {
 	OptixDeviceContext optixContext;
+	OptixModule module;
+	OptixProgramGroup raygenPG;
+	OptixProgramGroup missPG;
+	OptixProgramGroup hitgroupPG;
 	OptixPipeline pipeline;
 	OptixShaderBindingTable *sbt;
 	void *raygenRecordsBuffer;
@@ -22,12 +26,13 @@ struct S_CUDA_KNN {
 	float chi_square_squared_radius; // !!! !!! !!!
 	float3 *gaussian_as_polygon_vertices;
 	int3 *gaussian_as_polygon_indices;
+	OptixTraversableHandle GAS;
+	void *GASBuffer;
 	float4 *means; // !!! !!! !!!
 	int number_of_means; // !!! !!! !!!
-	float3 *gaussians_as_polygons_vertices;
-	int3 *gaussians_as_polygons_indices;
-	OptixTraversableHandle asHandle;
-	void *asBuffer;
+	void *instancesBuffer;
+	OptixTraversableHandle IAS;
+	void *IASBuffer;
 };
 
 // *** *** *** *** ***
@@ -61,3 +66,4 @@ extern "C" bool CUDA_KNN_KNeighbors(
 	int *indices,
 	S_CUDA_KNN* knn
 );
+bool CUDA_KNN_Destroy(S_CUDA_KNN* cknn);

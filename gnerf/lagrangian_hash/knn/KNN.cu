@@ -60,14 +60,13 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 	moduleCompileOptions.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
 	moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
 
-	pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
+	pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
 	pipelineCompileOptions.usesMotionBlur = false;
 	pipelineCompileOptions.numPayloadValues = 2;
 	pipelineCompileOptions.numAttributeValues = 0;
 	pipelineCompileOptions.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 	pipelineCompileOptions.pipelineLaunchParamsVariableName = "optixLaunchParams";
 
-	OptixModule module;
 	error_OptiX = optixModuleCreateFromPTX(
 		cknn.optixContext,
 		&moduleCompileOptions,
@@ -75,7 +74,7 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 		ptxCode,
 		strlen(ptxCode),
 		NULL, NULL,
-		&module
+		&cknn.module
 	);
 	if (error_OptiX != OPTIX_SUCCESS) return false;
 
@@ -89,17 +88,16 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 
 	OptixProgramGroupDesc pgDesc_raygen = {};
 	pgDesc_raygen.kind = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
-	pgDesc_raygen.raygen.module = module;           
+	pgDesc_raygen.raygen.module = cknn.module;           
 	pgDesc_raygen.raygen.entryFunctionName = "__raygen__";
 
-	OptixProgramGroup raygenPG;
 	error_OptiX = optixProgramGroupCreate(
 		cknn.optixContext,
 		&pgDesc_raygen,
 		1,
 		&pgOptions,
 		NULL, NULL,
-		&raygenPG
+		&cknn.raygenPG
 	);
 	if (error_OptiX != OPTIX_SUCCESS) return false;
 
@@ -108,14 +106,13 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 	OptixProgramGroupDesc pgDesc_miss = {};
 	pgDesc_miss.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
 
-	OptixProgramGroup missPG;
 	error_OptiX = optixProgramGroupCreate(
 		cknn.optixContext,
 		&pgDesc_miss,
 		1, 
 		&pgOptions,
 		NULL, NULL,
-		&missPG
+		&cknn.missPG
 	);
 	if (error_OptiX != OPTIX_SUCCESS) return false;
 
@@ -125,17 +122,16 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 	pgDesc_hitgroup.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
 
 	// !!! !!! !!! TRIANGLES !!! !!! !!!
-	pgDesc_hitgroup.hitgroup.moduleAH            = module;
+	pgDesc_hitgroup.hitgroup.moduleAH            = cknn.module;
 	pgDesc_hitgroup.hitgroup.entryFunctionNameAH = "__anyhit__";
 
-	OptixProgramGroup hitgroupPG;
 	error_OptiX = optixProgramGroupCreate(
 		cknn.optixContext,
 		&pgDesc_hitgroup,
 		1, 
 		&pgOptions,
 		NULL, NULL,
-		&hitgroupPG
+		&cknn.hitgroupPG
 	);
 	if (error_OptiX != OPTIX_SUCCESS) return false;
 
@@ -144,7 +140,7 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 	OptixPipelineLinkOptions pipelineLinkOptions = {};
 	pipelineLinkOptions.maxTraceDepth = 0;
 
-	OptixProgramGroup program_groups[] = { raygenPG, missPG, hitgroupPG };
+	OptixProgramGroup program_groups[] = { cknn.raygenPG, cknn.missPG, cknn.hitgroupPG };
 
 	error_OptiX = optixPipelineCreate(
 		cknn.optixContext,
@@ -162,7 +158,7 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 		0,
 		0,
 		2 * 1024 * 8, // !!! !!! !!! SOME NASTY CONSTANT !!! !!! !!!
-		1
+		2
 	);
 	if (error_OptiX != OPTIX_SUCCESS) return false;
 
@@ -173,7 +169,7 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 	// *********************************************************************************************
 
 	SbtRecord rec_raygen;
-	error_OptiX = optixSbtRecordPackHeader(raygenPG, &rec_raygen);
+	error_OptiX = optixSbtRecordPackHeader(cknn.raygenPG, &rec_raygen);
 	if (error_OptiX != OPTIX_SUCCESS) return false;
 
 	error_CUDA = cudaMalloc(&cknn.raygenRecordsBuffer, sizeof(SbtRecord) * 1);
@@ -187,7 +183,7 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 	// *********************************************************************************************
 
 	SbtRecord rec_miss;
-	error_OptiX = optixSbtRecordPackHeader(missPG, &rec_miss);
+	error_OptiX = optixSbtRecordPackHeader(cknn.missPG, &rec_miss);
 	if (error_OptiX != OPTIX_SUCCESS) return false;
 
 	error_CUDA = cudaMalloc(&cknn.missRecordsBuffer, sizeof(SbtRecord) * 1);
@@ -203,7 +199,7 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 	// *********************************************************************************************
 
 	SbtRecord rec_hitgroup;
-	error_OptiX = optixSbtRecordPackHeader(hitgroupPG, &rec_hitgroup);
+	error_OptiX = optixSbtRecordPackHeader(cknn.hitgroupPG, &rec_hitgroup);
 	if (error_OptiX != OPTIX_SUCCESS) return false;
 
 	error_CUDA = cudaMalloc(&cknn.hitgroupRecordsBuffer, sizeof(SbtRecord) * 1);
@@ -285,9 +281,6 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 	error_CUDA = cudaMemcpy(cknn.gaussian_as_polygon_indices, gaussian_as_polygon_indices, sizeof(int3) * 20, cudaMemcpyHostToDevice);
 	if (error_CUDA != cudaSuccess) return false;
 
-	cknn.gaussians_as_polygons_vertices = NULL; // !!! !!! !!!
-	cknn.gaussians_as_polygons_indices = NULL; // !!! !!! !!! 
-
 	// *********************************************************************************************
 
 	free(gaussian_as_polygon_vertices);
@@ -295,11 +288,113 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 
 	// *********************************************************************************************
 
-	cknn.asBuffer = NULL; // !!! !!! !!!
+	OptixAccelBuildOptions accel_options = {};
+	accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+	accel_options.operation  = OPTIX_BUILD_OPERATION_BUILD;
+
+	OptixBuildInput input_tri = {};
+	input_tri.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
+	input_tri.triangleArray.vertexBuffers = (CUdeviceptr *)&cknn.gaussian_as_polygon_vertices;
+	input_tri.triangleArray.numVertices = 12;
+	input_tri.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
+	input_tri.triangleArray.indexBuffer = (CUdeviceptr)cknn.gaussian_as_polygon_indices;
+	input_tri.triangleArray.numIndexTriplets = 20;
+	input_tri.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
+
+	int input_tri_flags[1] = {OPTIX_GEOMETRY_FLAG_REQUIRE_SINGLE_ANYHIT_CALL};
+	input_tri.triangleArray.flags = (const unsigned int *)input_tri_flags;
+	input_tri.triangleArray.numSbtRecords = 1;
 
 	// *********************************************************************************************
 
+	OptixAccelBufferSizes blasBufferSizes;
+	error_OptiX = optixAccelComputeMemoryUsage(
+		cknn.optixContext,
+		&accel_options,
+		&input_tri,
+		1,
+		&blasBufferSizes
+	);
+	if (error_OptiX != OPTIX_SUCCESS) return false;
+
+	// *********************************************************************************************
+
+	unsigned long long *compactedSizeBuffer;
+	error_CUDA = cudaMalloc(&compactedSizeBuffer, sizeof(unsigned long long) * 1);
+	if (error_CUDA != cudaSuccess) return false;
+
+	OptixAccelEmitDesc emitDesc;
+	emitDesc.type   = OPTIX_PROPERTY_TYPE_COMPACTED_SIZE;
+	emitDesc.result = (CUdeviceptr)compactedSizeBuffer;
+
+	void *tempBuffer;
+
+	error_CUDA = cudaMalloc(&tempBuffer, blasBufferSizes.tempSizeInBytes);
+	if (error_CUDA != cudaSuccess) return false;
+
+	void *outputBuffer;
+
+	error_CUDA = cudaMalloc(&outputBuffer, blasBufferSizes.outputSizeInBytes);
+	if (error_CUDA != cudaSuccess) return false;
+
+	// *********************************************************************************************
+
+	error_OptiX = optixAccelBuild(
+		cknn.optixContext,
+		0,
+		&accel_options,
+		&input_tri,
+		1,  
+		(CUdeviceptr)tempBuffer,
+		blasBufferSizes.tempSizeInBytes,
+		(CUdeviceptr)outputBuffer,
+		blasBufferSizes.outputSizeInBytes,
+		&cknn.GAS,
+		&emitDesc,
+		1
+	);
+	if (error_OptiX != OPTIX_SUCCESS) return false;
+
+	error_CUDA = cudaDeviceSynchronize();
+	if (error_CUDA != cudaSuccess) return false;
+
+	unsigned long long compactedSize;
+
+	error_CUDA = cudaMemcpy(&compactedSize, compactedSizeBuffer, sizeof(unsigned long long) * 1, cudaMemcpyDeviceToHost);
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_CUDA = cudaMalloc(&cknn.GASBuffer, compactedSize);
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_OptiX = optixAccelCompact(
+		cknn.optixContext,
+		0,
+		cknn.GAS,
+		(CUdeviceptr)cknn.GASBuffer,
+		compactedSize,
+		&cknn.GAS
+	);
+	if (error_OptiX != OPTIX_SUCCESS) return false;
+
+	cudaDeviceSynchronize();
+	error_CUDA = cudaGetLastError();
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_CUDA = cudaFree(compactedSizeBuffer);
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_CUDA = cudaFree(tempBuffer);
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_CUDA = cudaFree(outputBuffer);
+	if (error_CUDA != cudaSuccess) return false;
+
+	// *********************************************************************************************
+
+	cknn.IASBuffer = NULL; // !!! !!! !!!
 	*knn = cknn;
+
+	// *********************************************************************************************
 
 	return true;
 }
@@ -308,34 +403,93 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 // CUDA_KNN_Fit                                                                                    *
 // *************************************************************************************************
 
-__global__ void UpdateGaussiansPoligonsVertices(S_CUDA_KNN cknn) {
-	int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+__global__ void GenerateInstances(float4 *means, int number_of_means, OptixTraversableHandle GAS, float *instances) {
+	extern __shared__ float tmp[];
 
-	if (tid < cknn.number_of_means * 12) {
-		int gauss_ind = tid / 12;
-		float4 mean = cknn.means[gauss_ind];
-		float3 vertex2D = cknn.gaussian_as_polygon_vertices[tid % 12];
-		cknn.gaussians_as_polygons_vertices[tid] = make_float3(
-			mean.x + (mean.w * vertex2D.x),
-			mean.y + (mean.w * vertex2D.y),
-			mean.z + (mean.w * vertex2D.z)
-		);
+	int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int wid = tid >> 5;
+	int number_of_warps = number_of_means >> 5;
+
+	// *** *** *** *** ***
+
+	if (wid <= number_of_warps) {
+		int index = ((tid < number_of_means) ? tid : (number_of_means - 1));
+		float4 mean = means[index];
+
+		float *base_address = &tmp[(threadIdx.x * 20) + (threadIdx.x >> 3)];
+
+		// transform
+		base_address[0] = mean.w;
+		base_address[1] = 0.0f;
+		base_address[2] = 0.0f;
+		base_address[3] = mean.x;
+
+		base_address[4] = 0.0f;
+		base_address[5] = mean.w;
+		base_address[6] = 0.0f;
+		base_address[7] = mean.y;
+
+		base_address[8] = 0.0f;
+		base_address[9] = 0.0f;
+		base_address[10] = mean.w;
+		base_address[11] = mean.z;
+
+		// instanceId
+		base_address[12] = 0.0f;
+
+		// sbtOffset
+		base_address[13] = 0.0f;
+
+		// visibilityMask
+		base_address[14] = __uint_as_float(255);
+
+		// flags
+		base_address[15] = __uint_as_float(OPTIX_INSTANCE_FLAG_NONE);
+
+		// traversableHandle
+		base_address[16] = __uint_as_float(GAS);
+		base_address[17] = __uint_as_float(GAS >> 32);
+
+		// pad
+		base_address[18] = 0.0f;
+		base_address[19] = 0.0f;
 	}
-}
 
-// *************************************************************************************************
+	// *** *** *** *** ***
 
-__global__ void UpdateGaussiansPoligonsIndices(S_CUDA_KNN cknn) {
-	int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+	__syncthreads();
 
-	if (tid < cknn.number_of_means * 20) {
-		int gauss_ind = tid / 20;
-		int3 Gauss_as_polygon_indices = cknn.gaussian_as_polygon_indices[tid % 20];
-		cknn.gaussians_as_polygons_indices[tid] = make_int3(
-			Gauss_as_polygon_indices.x + (gauss_ind * 12),
-			Gauss_as_polygon_indices.y + (gauss_ind * 12),
-			Gauss_as_polygon_indices.z + (gauss_ind * 12)
-		);
+	// *** *** *** *** ***
+
+	if (wid <= number_of_warps) {
+		int lane_id = threadIdx.x & 31;
+
+		float *base_address_1 = &instances[(tid & -32) * 20];
+		float *base_address_2 = &tmp[((threadIdx.x & -32) * 20) + ((threadIdx.x & -32) >> 3)];
+
+		base_address_1[lane_id      ] = base_address_2[lane_id      ];
+		base_address_1[lane_id + 32 ] = base_address_2[lane_id + 32 ];
+		base_address_1[lane_id + 64 ] = base_address_2[lane_id + 64 ];
+		base_address_1[lane_id + 96 ] = base_address_2[lane_id + 96 ];
+		base_address_1[lane_id + 128] = base_address_2[lane_id + 128];
+
+		base_address_1[lane_id + 160] = base_address_2[lane_id + 160 + 1];
+		base_address_1[lane_id + 192] = base_address_2[lane_id + 192 + 1];
+		base_address_1[lane_id + 224] = base_address_2[lane_id + 224 + 1];
+		base_address_1[lane_id + 256] = base_address_2[lane_id + 256 + 1];
+		base_address_1[lane_id + 288] = base_address_2[lane_id + 288 + 1];
+
+		base_address_1[lane_id + 320] = base_address_2[lane_id + 320 + 2];
+		base_address_1[lane_id + 352] = base_address_2[lane_id + 352 + 2];
+		base_address_1[lane_id + 384] = base_address_2[lane_id + 384 + 2];
+		base_address_1[lane_id + 416] = base_address_2[lane_id + 416 + 2];
+		base_address_1[lane_id + 448] = base_address_2[lane_id + 448 + 2];
+
+		base_address_1[lane_id + 480] = base_address_2[lane_id + 480 + 3];
+		base_address_1[lane_id + 512] = base_address_2[lane_id + 512 + 3];
+		base_address_1[lane_id + 544] = base_address_2[lane_id + 544 + 3];
+		base_address_1[lane_id + 576] = base_address_2[lane_id + 576 + 3];
+		base_address_1[lane_id + 608] = base_address_2[lane_id + 608 + 3];
 	}
 }
 
@@ -364,65 +518,47 @@ extern "C" bool CUDA_KNN_Fit(float4 *means, int number_of_means, S_CUDA_KNN* knn
 
 	// *********************************************************************************************
 
-	if (cknn.gaussians_as_polygons_vertices != NULL) {
-		error_CUDA = cudaFree(cknn.gaussians_as_polygons_vertices);
-		if (error_CUDA != cudaSuccess) return false;
-	}
-
-	error_CUDA = cudaMalloc(&cknn.gaussians_as_polygons_vertices, sizeof(float3) * number_of_means * 12);
+	cudaMalloc(&cknn.instancesBuffer, sizeof(OptixInstance) * ((number_of_means + 31) & -32)); // !!! !!! !!!
+	error_CUDA = cudaGetLastError();
 	if (error_CUDA != cudaSuccess) return false;
-
-	UpdateGaussiansPoligonsVertices<<<((number_of_means * 12) + 63) >> 6, 64>>>(cknn);
+	
+	GenerateInstances<<<(number_of_means + 63) >> 6, 64, ((20 * 64) + 7) << 2>>>(
+		means,
+		number_of_means,
+		cknn.GAS,
+		(float *)cknn.instancesBuffer
+	);
 	error_CUDA = cudaGetLastError();
 	if (error_CUDA != cudaSuccess) return false;
 
-	// *********************************************************************************************
-
-	if (cknn.gaussians_as_polygons_indices != NULL) {
-		error_CUDA = cudaFree(cknn.gaussians_as_polygons_indices);
-		if (error_CUDA != cudaSuccess) return false;
-	}
-
-	error_CUDA = cudaMalloc(&cknn.gaussians_as_polygons_indices, sizeof(int3) * number_of_means * 20); // !!! !!! !!!
+	error_CUDA = cudaDeviceSynchronize();
 	if (error_CUDA != cudaSuccess) return false;
-
-	UpdateGaussiansPoligonsIndices<<<((number_of_means * 20) + 63) >> 6, 64>>>(cknn);
-	error_CUDA = cudaGetLastError();
-	if (error_CUDA != cudaSuccess) return false;
-
+	
 	// *********************************************************************************************
 
 	OptixAccelBuildOptions accel_options = {};
 	accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
 	accel_options.operation  = OPTIX_BUILD_OPERATION_BUILD;
 
-	OptixBuildInput tri_input = {};
-	tri_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
-	tri_input.triangleArray.vertexBuffers = (CUdeviceptr *)&cknn.gaussians_as_polygons_vertices;
-	tri_input.triangleArray.numVertices = cknn.number_of_means * 12;
-	tri_input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
-	tri_input.triangleArray.indexBuffer = (CUdeviceptr)cknn.gaussians_as_polygons_indices;
-	tri_input.triangleArray.numIndexTriplets = cknn.number_of_means * 20;
-	tri_input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
+	OptixBuildInput input_ins = {};
+	input_ins.type                       = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+	input_ins.instanceArray.instances    = (CUdeviceptr)cknn.instancesBuffer;
+	input_ins.instanceArray.numInstances = number_of_means;
 
-	int input_tri_flags[1] = {OPTIX_GEOMETRY_FLAG_REQUIRE_SINGLE_ANYHIT_CALL};
-	tri_input.triangleArray.flags = (const unsigned int *)input_tri_flags;
-	tri_input.triangleArray.numSbtRecords = 1;
-	
 	// *********************************************************************************************
 
 	OptixAccelBufferSizes blasBufferSizes;
 	error_OptiX = optixAccelComputeMemoryUsage(
 		cknn.optixContext,
 		&accel_options,
-		&tri_input,
+		&input_ins,
 		1,
 		&blasBufferSizes
 	);
 	if (error_OptiX != OPTIX_SUCCESS) return false;
 
 	// *********************************************************************************************
-
+	
 	unsigned long long *compactedSizeBuffer;
 	error_CUDA = cudaMalloc(&compactedSizeBuffer, sizeof(unsigned long long) * 1);
 	if (error_CUDA != cudaSuccess) return false;
@@ -447,13 +583,13 @@ extern "C" bool CUDA_KNN_Fit(float4 *means, int number_of_means, S_CUDA_KNN* knn
 		cknn.optixContext,
 		0,
 		&accel_options,
-		&tri_input,
+		&input_ins,
 		1,  
 		(CUdeviceptr)tempBuffer,
 		blasBufferSizes.tempSizeInBytes,
 		(CUdeviceptr)outputBuffer,
 		blasBufferSizes.outputSizeInBytes,
-		&cknn.asHandle,
+		&cknn.IAS,
 		&emitDesc,
 		1
 	);
@@ -467,21 +603,21 @@ extern "C" bool CUDA_KNN_Fit(float4 *means, int number_of_means, S_CUDA_KNN* knn
 	error_CUDA = cudaMemcpy(&compactedSize, compactedSizeBuffer, sizeof(unsigned long long) * 1, cudaMemcpyDeviceToHost);
 	if (error_CUDA != cudaSuccess) return false;
 
-	if (cknn.asBuffer != NULL) {
-		error_CUDA = cudaFree(cknn.asBuffer);
+	if (cknn.IASBuffer != NULL) {
+		error_CUDA = cudaFree(cknn.IASBuffer);
 		if (error_CUDA != cudaSuccess) return false;
 	}
 
-	error_CUDA = cudaMalloc(&cknn.asBuffer, compactedSize);
+	error_CUDA = cudaMalloc(&cknn.IASBuffer, compactedSize);
 	if (error_CUDA != cudaSuccess) return false;
 
 	error_OptiX = optixAccelCompact(
 		cknn.optixContext,
 		0,
-		cknn.asHandle,
-		(CUdeviceptr)cknn.asBuffer,
+		cknn.IAS,
+		(CUdeviceptr)cknn.IASBuffer,
 		compactedSize,
-		&cknn.asHandle
+		&cknn.IAS
 	);
 	if (error_OptiX != OPTIX_SUCCESS) return false;
 
@@ -532,6 +668,9 @@ extern "C" bool CUDA_KNN_KNeighbors(
 ) {
 	cudaError_t error_CUDA;
 	OptixResult error_OptiX;
+
+	// *********************************************************************************************
+	
 	float4 max_R;
 
 	S_CUDA_KNN cknn = *knn;
@@ -547,9 +686,11 @@ extern "C" bool CUDA_KNN_KNeighbors(
 		return false;
 	}
 
+	// *********************************************************************************************
+
 	SLaunchParams launchParams;
 
-	launchParams.traversable = cknn.asHandle;
+	launchParams.traversable = cknn.IAS;
 	launchParams.means = cknn.means;
 	launchParams.queried_points = queried_points;
 	launchParams.distances = distances;
@@ -590,7 +731,60 @@ extern "C" bool CUDA_KNN_KNeighbors(
 	return true;
 }
 
+// *************************************************************************************************
+// CUDA_KNN_Destroy                                                                                *
+// *************************************************************************************************
 
-extern "C" S_CUDA_KNN* create_cknn() {
-    return new S_CUDA_KNN;
+bool CUDA_KNN_Destroy(S_CUDA_KNN* knn) {
+	cudaError_t error_CUDA;
+	OptixResult error_OptiX;
+	S_CUDA_KNN cknn = *knn;
+	
+	delete cknn.sbt;
+
+	error_CUDA = cudaFree(cknn.raygenRecordsBuffer);
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_CUDA = cudaFree(cknn.missRecordsBuffer);
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_CUDA = cudaFree(cknn.hitgroupRecordsBuffer);
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_CUDA = cudaFree(cknn.gaussian_as_polygon_vertices);
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_CUDA = cudaFree(cknn.gaussian_as_polygon_indices);
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_CUDA = cudaFree(cknn.GASBuffer);
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_CUDA = cudaFree(cknn.instancesBuffer);
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_CUDA = cudaFree(cknn.IASBuffer);
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_OptiX = optixPipelineDestroy(cknn.pipeline);
+	if (error_OptiX != OPTIX_SUCCESS) return false;
+
+	error_OptiX = optixProgramGroupDestroy(cknn.raygenPG);
+	if (error_OptiX != OPTIX_SUCCESS) return false;
+
+	error_OptiX = optixProgramGroupDestroy(cknn.missPG);
+	if (error_OptiX != OPTIX_SUCCESS) return false;
+
+	error_OptiX = optixProgramGroupDestroy(cknn.hitgroupPG);
+	if (error_OptiX != OPTIX_SUCCESS) return false;
+
+	error_OptiX = optixModuleDestroy(cknn.module);
+	if (error_OptiX != OPTIX_SUCCESS) return false;
+
+	error_OptiX = optixDeviceContextDestroy(cknn.optixContext);
+	if (error_OptiX != OPTIX_SUCCESS) return false;
+
+	*knn = cknn;
+
+	return true;
 }

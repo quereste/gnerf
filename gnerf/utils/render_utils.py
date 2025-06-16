@@ -66,8 +66,8 @@ def render_image_with_occgrid(
         if radiance_field.training
         else test_chunk_size
     )
-    # for i in range(0, num_rays, chunk):
-    for i in tqdm(range(0, num_rays, chunk)):
+    for i in range(0, num_rays, chunk):
+    # for i in tqdm(range(0, num_rays, chunk)):
         chunk_rays = namedtuple_map(lambda r: r[i : i + chunk], rays)
 
         rays_o = chunk_rays.origins

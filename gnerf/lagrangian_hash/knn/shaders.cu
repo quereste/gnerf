@@ -36,9 +36,9 @@ extern "C" __global__ void __raygen__() {
 
 	// *** *** *** *** ***
 
-	rp.neighbors_num = 0;
 	rp.max_dist_so_far_old = INFINITY;
 	do {
+		rp.neighbors_num = 0;
 		rp.max_dist_so_far = -INFINITY;
 		rp.overflow = false;
 		
@@ -47,7 +47,7 @@ extern "C" __global__ void __raygen__() {
 			make_float3(queried_point.x, queried_point.y, queried_point.z),
 			v,
 			0.0f,
-			INFINITY,
+			2.0f * optixLaunchParams.max_R, // !!! !!! !!!
 			0.0f,
 			OptixVisibilityMask(255),
 			OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT | OPTIX_RAY_FLAG_CULL_FRONT_FACING_TRIANGLES,
@@ -94,8 +94,7 @@ extern "C" __global__ void __raygen__() {
 // *************************************************************************************************
 
 extern "C" __global__ void __anyhit__() {
-	unsigned gauss_ind = optixGetPrimitiveIndex();
-	gauss_ind /= 20;
+	unsigned gauss_ind = optixGetInstanceIndex();
 
 	float4 mean = optixLaunchParams.means[gauss_ind];
 	
@@ -110,11 +109,11 @@ extern "C" __global__ void __anyhit__() {
 	// *** *** *** *** ***
 
 	float tMin = optixGetRayTmax();
-	float3 O = optixGetObjectRayOrigin();
+	float3 O = optixGetWorldRayOrigin();
 	float3 d = make_float3(mean.x - O.x, mean.y - O.y, mean.z - O.z);
 	float max_distance = mean.w * sqrtf(optixLaunchParams.chi_square_squared_radius);
 	float distance = sqrtf((d.x * d.x) + (d.y * d.y) + (d.z * d.z));
-	if ((distance < max_distance) && (distance <= rp->max_dist_so_far_old)) {
+	if ((distance <= max_distance) && (distance <= rp->max_dist_so_far_old)) {
 		if (rp->neighbors_num < optixLaunchParams.K) {
 			if (distance > rp->max_dist_so_far)	rp->max_dist_so_far = distance;
 			rp->data[rp->neighbors_num++] = make_float2(distance, __uint_as_float(gauss_ind));
@@ -126,13 +125,5 @@ extern "C" __global__ void __anyhit__() {
 			}
 		}
 	}
-	if (rp->neighbors_num < optixLaunchParams.K) {
-		// We are not found K candidates for the nearest neighbors, so we admit every candidate,
-		// whose ellipsoid of confidence contains the queried point.
-		if (tMin <= 2.0f * optixLaunchParams.max_R)	optixIgnoreIntersection();
-	} else {
-		// We have found K candidates, so we admit only these, who are closer to the queried point
-		// than the most distant one found so far.
-		if (tMin <= optixLaunchParams.max_R + rp->max_dist_so_far) optixIgnoreIntersection();
-	}
+	if ((rp->neighbors_num < optixLaunchParams.K) || (tMin <= optixLaunchParams.max_R + rp->max_dist_so_far)) optixIgnoreIntersection();
 }

@@ -61,8 +61,8 @@
 	.reg .b64 	%SPL;
 	.reg .pred 	%p<17>;
 	.reg .b16 	%rs<3>;
-	.reg .f32 	%f<47>;
-	.reg .b32 	%r<160>;
+	.reg .f32 	%f<49>;
+	.reg .b32 	%r<159>;
 	.reg .b64 	%rd<50>;
 
 
@@ -77,19 +77,19 @@
 	cvta.to.global.u64 	%rd28, %rd27;
 	mul.wide.s32 	%rd29, %r49, 16;
 	add.s64 	%rd30, %rd28, %rd29;
-	ld.global.v4.f32 	{%f9, %f10, %f11, %f12}, [%rd30];
-	mov.u32 	%r55, 0;
+	ld.global.v4.f32 	{%f10, %f11, %f12, %f13}, [%rd30];
 	// begin inline asm
 	call (%r52), _optix_get_launch_dimension_x, ();
 	// end inline asm
-	cvt.u32.u64 	%r146, %rd26;
+	cvt.u32.u64 	%r145, %rd26;
 	shr.u64 	%rd31, %rd26, 32;
-	cvt.u32.u64 	%r145, %rd31;
-	add.s64 	%rd2, %rd1, 8192;
-	st.local.u32 	[%rd1+8192], %r55;
-	mov.u32 	%r56, 2139095040;
-	st.local.u32 	[%rd1+8200], %r56;
+	cvt.u32.u64 	%r144, %rd31;
+	add.s64 	%rd2, %rd1, 8200;
+	mov.u32 	%r55, 2139095040;
+	st.local.u32 	[%rd1+8200], %r55;
 	ld.const.u64 	%rd3, [optixLaunchParams];
+	ld.const.f32 	%f14, [optixLaunchParams+48];
+	add.f32 	%f4, %f14, %f14;
 	ld.const.u32 	%r5, [optixLaunchParams+44];
 	add.s32 	%r6, %r5, -1;
 	mul.wide.s32 	%rd32, %r6, 8;
@@ -97,73 +97,73 @@
 	bra.uni 	$L__BB0_1;
 
 $L__BB0_11:
-	ld.local.f32 	%f26, [%rd4];
-	st.local.f32 	[%rd2+8], %f26;
+	ld.local.f32 	%f28, [%rd4];
+	st.local.f32 	[%rd2], %f28;
 
 $L__BB0_1:
-	mov.u32 	%r128, -8388608;
-	st.local.u32 	[%rd2+4], %r128;
+	mov.u32 	%r127, -8388608;
+	mov.u32 	%r126, 0;
+	st.local.v2.u32 	[%rd2+-8], {%r126, %r127};
 	mov.u16 	%rs1, 0;
-	st.local.u8 	[%rd2+12], %rs1;
-	mov.f32 	%f16, 0f3F800000;
-	mov.f32 	%f20, 0f7F800000;
-	mov.f32 	%f21, 0f00000000;
-	mov.u32 	%r90, 255;
-	mov.u32 	%r91, 40;
-	mov.u32 	%r147, 1;
-	mov.u32 	%r95, 2;
+	st.local.u8 	[%rd2+4], %rs1;
+	mov.f32 	%f18, 0f3F800000;
+	mov.f32 	%f23, 0f00000000;
+	mov.u32 	%r89, 255;
+	mov.u32 	%r90, 40;
+	mov.u32 	%r146, 1;
+	mov.u32 	%r94, 2;
 	// begin inline asm
-	call(%r146,%r145,%r59,%r60,%r61,%r62,%r63,%r64,%r65,%r66,%r67,%r68,%r69,%r70,%r71,%r72,%r73,%r74,%r75,%r76,%r77,%r78,%r79,%r80,%r81,%r82,%r83,%r84,%r85,%r86,%r87,%r88),_optix_trace_typed_32,(%r55,%rd3,%f9,%f10,%f11,%f16,%f21,%f21,%f21,%f20,%f21,%r90,%r91,%r55,%r147,%r55,%r95,%r146,%r145,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55,%r55);
+	call(%r145,%r144,%r58,%r59,%r60,%r61,%r62,%r63,%r64,%r65,%r66,%r67,%r68,%r69,%r70,%r71,%r72,%r73,%r74,%r75,%r76,%r77,%r78,%r79,%r80,%r81,%r82,%r83,%r84,%r85,%r86,%r87),_optix_trace_typed_32,(%r126,%rd3,%f10,%f11,%f12,%f18,%f23,%f23,%f23,%f4,%f23,%r89,%r90,%r126,%r146,%r126,%r94,%r145,%r144,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126,%r126);
 	// end inline asm
-	ld.local.u32 	%r150, [%rd2];
-	setp.lt.s32 	%p1, %r150, 2;
+	ld.local.u32 	%r149, [%rd2+-8];
+	setp.lt.s32 	%p1, %r149, 2;
 	@%p1 bra 	$L__BB0_10;
 
 $L__BB0_2:
-	mov.u32 	%r12, %r147;
+	mov.u32 	%r12, %r146;
 	mul.wide.s32 	%rd34, %r12, 8;
 	add.s64 	%rd35, %rd1, %rd34;
-	ld.local.v2.f32 	{%f22, %f23}, [%rd35];
-	add.s32 	%r147, %r12, 1;
-	add.s32 	%r130, %r12, -1;
-	mul.wide.s32 	%rd36, %r130, 8;
+	ld.local.v2.f32 	{%f24, %f25}, [%rd35];
+	add.s32 	%r146, %r12, 1;
+	add.s32 	%r129, %r12, -1;
+	mul.wide.s32 	%rd36, %r129, 8;
 	add.s64 	%rd47, %rd1, %rd36;
-	mov.u32 	%r148, %r147;
+	mov.u32 	%r147, %r146;
 
 $L__BB0_3:
-	ld.local.v2.f32 	{%f24, %f25}, [%rd47];
-	setp.lt.f32 	%p2, %f22, %f24;
+	ld.local.v2.f32 	{%f26, %f27}, [%rd47];
+	setp.lt.f32 	%p2, %f24, %f26;
 	@%p2 bra 	$L__BB0_5;
 	bra.uni 	$L__BB0_4;
 
 $L__BB0_5:
-	st.local.v2.f32 	[%rd47+8], {%f24, %f25};
+	st.local.v2.f32 	[%rd47+8], {%f26, %f27};
 	add.s64 	%rd47, %rd47, -8;
-	add.s32 	%r148, %r148, -1;
-	setp.gt.s32 	%p3, %r148, 1;
+	add.s32 	%r147, %r147, -1;
+	setp.gt.s32 	%p3, %r147, 1;
 	@%p3 bra 	$L__BB0_3;
 
-	add.s32 	%r149, %r148, -1;
+	add.s32 	%r148, %r147, -1;
 	bra.uni 	$L__BB0_7;
 
 $L__BB0_4:
-	add.s32 	%r149, %r148, -1;
+	add.s32 	%r148, %r147, -1;
 
 $L__BB0_7:
-	setp.ge.s32 	%p4, %r149, %r12;
+	setp.ge.s32 	%p4, %r148, %r12;
 	@%p4 bra 	$L__BB0_9;
 
-	mul.wide.s32 	%rd37, %r149, 8;
+	mul.wide.s32 	%rd37, %r148, 8;
 	add.s64 	%rd38, %rd1, %rd37;
-	st.local.v2.f32 	[%rd38], {%f22, %f23};
+	st.local.v2.f32 	[%rd38], {%f24, %f25};
 
 $L__BB0_9:
-	ld.local.u32 	%r150, [%rd2];
-	setp.lt.s32 	%p5, %r147, %r150;
+	ld.local.u32 	%r149, [%rd2+-8];
+	setp.lt.s32 	%p5, %r146, %r149;
 	@%p5 bra 	$L__BB0_2;
 
 $L__BB0_10:
-	ld.local.u8 	%rs2, [%rd2+12];
+	ld.local.u8 	%rs2, [%rd2+4];
 	setp.eq.s16 	%p6, %rs2, 0;
 	@%p6 bra 	$L__BB0_12;
 	bra.uni 	$L__BB0_11;
@@ -176,151 +176,151 @@ $L__BB0_12:
 	cvta.to.global.u64 	%rd8, %rd39;
 	ld.const.u64 	%rd40, [optixLaunchParams+32];
 	cvta.to.global.u64 	%rd9, %rd40;
-	and.b32  	%r159, %r5, 3;
+	and.b32  	%r158, %r5, 3;
 	setp.lt.u32 	%p8, %r6, 3;
-	mov.u32 	%r158, 0;
+	mov.u32 	%r157, 0;
 	@%p8 bra 	$L__BB0_28;
 
-	mad.lo.s32 	%r154, %r52, 3, %r49;
+	mad.lo.s32 	%r153, %r52, 3, %r49;
 	shl.b32 	%r23, %r52, 2;
-	shl.b32 	%r133, %r52, 1;
-	add.s32 	%r153, %r49, %r133;
-	add.s32 	%r152, %r52, %r49;
-	sub.s32 	%r26, %r159, %r5;
-	mov.u32 	%r155, 0;
-	mov.u32 	%r151, %r49;
+	shl.b32 	%r132, %r52, 1;
+	add.s32 	%r152, %r49, %r132;
+	add.s32 	%r151, %r52, %r49;
+	sub.s32 	%r26, %r158, %r5;
+	mov.u32 	%r154, 0;
+	mov.u32 	%r150, %r49;
 	mov.u64 	%rd48, %rd1;
 
 $L__BB0_15:
-	mul.wide.s32 	%rd41, %r151, 4;
+	mul.wide.s32 	%rd41, %r150, 4;
 	add.s64 	%rd11, %rd8, %rd41;
 	add.s64 	%rd12, %rd9, %rd41;
-	setp.lt.s32 	%p9, %r155, %r150;
+	setp.lt.s32 	%p9, %r154, %r149;
 	@%p9 bra 	$L__BB0_17;
 	bra.uni 	$L__BB0_16;
 
 $L__BB0_17:
-	ld.local.v2.f32 	{%f27, %f28}, [%rd48];
-	st.global.f32 	[%rd11], %f27;
-	st.global.f32 	[%rd12], %f28;
+	ld.local.v2.f32 	{%f29, %f30}, [%rd48];
+	st.global.f32 	[%rd11], %f29;
+	st.global.f32 	[%rd12], %f30;
 	bra.uni 	$L__BB0_18;
 
 $L__BB0_16:
-	mov.u32 	%r134, -8388608;
-	st.global.u32 	[%rd11], %r134;
-	mov.u32 	%r135, -1;
-	st.global.u32 	[%rd12], %r135;
+	mov.u32 	%r133, -8388608;
+	st.global.u32 	[%rd11], %r133;
+	mov.u32 	%r134, -1;
+	st.global.u32 	[%rd12], %r134;
 
 $L__BB0_18:
-	add.s32 	%r32, %r155, 1;
-	setp.lt.s32 	%p10, %r32, %r150;
-	mul.wide.s32 	%rd42, %r152, 4;
+	add.s32 	%r32, %r154, 1;
+	setp.lt.s32 	%p10, %r32, %r149;
+	mul.wide.s32 	%rd42, %r151, 4;
 	add.s64 	%rd14, %rd8, %rd42;
 	add.s64 	%rd15, %rd9, %rd42;
 	@%p10 bra 	$L__BB0_20;
 	bra.uni 	$L__BB0_19;
 
 $L__BB0_20:
-	ld.local.v2.f32 	{%f31, %f32}, [%rd48+8];
-	st.global.f32 	[%rd14], %f31;
-	st.global.f32 	[%rd15], %f32;
+	ld.local.v2.f32 	{%f33, %f34}, [%rd48+8];
+	st.global.f32 	[%rd14], %f33;
+	st.global.f32 	[%rd15], %f34;
 	bra.uni 	$L__BB0_21;
 
 $L__BB0_19:
-	mov.u32 	%r136, -8388608;
-	st.global.u32 	[%rd14], %r136;
-	mov.u32 	%r137, -1;
-	st.global.u32 	[%rd15], %r137;
+	mov.u32 	%r135, -8388608;
+	st.global.u32 	[%rd14], %r135;
+	mov.u32 	%r136, -1;
+	st.global.u32 	[%rd15], %r136;
 
 $L__BB0_21:
 	add.s32 	%r33, %r32, 1;
-	setp.lt.s32 	%p11, %r33, %r150;
-	mul.wide.s32 	%rd43, %r153, 4;
+	setp.lt.s32 	%p11, %r33, %r149;
+	mul.wide.s32 	%rd43, %r152, 4;
 	add.s64 	%rd16, %rd8, %rd43;
 	add.s64 	%rd17, %rd9, %rd43;
 	@%p11 bra 	$L__BB0_23;
 	bra.uni 	$L__BB0_22;
 
 $L__BB0_23:
-	ld.local.v2.f32 	{%f35, %f36}, [%rd48+16];
-	st.global.f32 	[%rd16], %f35;
-	st.global.f32 	[%rd17], %f36;
+	ld.local.v2.f32 	{%f37, %f38}, [%rd48+16];
+	st.global.f32 	[%rd16], %f37;
+	st.global.f32 	[%rd17], %f38;
 	bra.uni 	$L__BB0_24;
 
 $L__BB0_22:
-	mov.u32 	%r138, -8388608;
-	st.global.u32 	[%rd16], %r138;
-	mov.u32 	%r139, -1;
-	st.global.u32 	[%rd17], %r139;
+	mov.u32 	%r137, -8388608;
+	st.global.u32 	[%rd16], %r137;
+	mov.u32 	%r138, -1;
+	st.global.u32 	[%rd17], %r138;
 
 $L__BB0_24:
 	add.s32 	%r34, %r33, 1;
-	setp.lt.s32 	%p12, %r34, %r150;
-	mul.wide.s32 	%rd44, %r154, 4;
+	setp.lt.s32 	%p12, %r34, %r149;
+	mul.wide.s32 	%rd44, %r153, 4;
 	add.s64 	%rd18, %rd8, %rd44;
 	add.s64 	%rd19, %rd9, %rd44;
 	@%p12 bra 	$L__BB0_26;
 	bra.uni 	$L__BB0_25;
 
 $L__BB0_26:
-	ld.local.v2.f32 	{%f39, %f40}, [%rd48+24];
-	st.global.f32 	[%rd18], %f39;
-	st.global.f32 	[%rd19], %f40;
+	ld.local.v2.f32 	{%f41, %f42}, [%rd48+24];
+	st.global.f32 	[%rd18], %f41;
+	st.global.f32 	[%rd19], %f42;
 	bra.uni 	$L__BB0_27;
 
 $L__BB0_25:
-	mov.u32 	%r140, -8388608;
-	st.global.u32 	[%rd18], %r140;
-	mov.u32 	%r141, -1;
-	st.global.u32 	[%rd19], %r141;
+	mov.u32 	%r139, -8388608;
+	st.global.u32 	[%rd18], %r139;
+	mov.u32 	%r140, -1;
+	st.global.u32 	[%rd19], %r140;
 
 $L__BB0_27:
-	add.s32 	%r158, %r155, 4;
-	add.s32 	%r154, %r154, %r23;
-	add.s64 	%rd48, %rd48, 32;
+	add.s32 	%r157, %r154, 4;
 	add.s32 	%r153, %r153, %r23;
+	add.s64 	%rd48, %rd48, 32;
 	add.s32 	%r152, %r152, %r23;
 	add.s32 	%r151, %r151, %r23;
-	add.s32 	%r142, %r26, %r158;
-	setp.ne.s32 	%p13, %r142, 0;
-	add.s32 	%r155, %r34, 1;
+	add.s32 	%r150, %r150, %r23;
+	add.s32 	%r141, %r26, %r157;
+	setp.ne.s32 	%p13, %r141, 0;
+	add.s32 	%r154, %r34, 1;
 	@%p13 bra 	$L__BB0_15;
 
 $L__BB0_28:
-	setp.eq.s32 	%p14, %r159, 0;
+	setp.eq.s32 	%p14, %r158, 0;
 	@%p14 bra 	$L__BB0_34;
 
-	mad.lo.s32 	%r157, %r52, %r158, %r49;
-	mul.wide.s32 	%rd45, %r158, 8;
+	mad.lo.s32 	%r156, %r52, %r157, %r49;
+	mul.wide.s32 	%rd45, %r157, 8;
 	add.s64 	%rd49, %rd1, %rd45;
 
 $L__BB0_30:
 	.pragma "nounroll";
-	mul.wide.s32 	%rd46, %r157, 4;
+	mul.wide.s32 	%rd46, %r156, 4;
 	add.s64 	%rd23, %rd8, %rd46;
 	add.s64 	%rd24, %rd9, %rd46;
-	setp.lt.s32 	%p15, %r158, %r150;
+	setp.lt.s32 	%p15, %r157, %r149;
 	@%p15 bra 	$L__BB0_32;
 	bra.uni 	$L__BB0_31;
 
 $L__BB0_32:
-	ld.local.v2.f32 	{%f43, %f44}, [%rd49];
-	st.global.f32 	[%rd23], %f43;
-	st.global.f32 	[%rd24], %f44;
+	ld.local.v2.f32 	{%f45, %f46}, [%rd49];
+	st.global.f32 	[%rd23], %f45;
+	st.global.f32 	[%rd24], %f46;
 	bra.uni 	$L__BB0_33;
 
 $L__BB0_31:
-	mov.u32 	%r143, -8388608;
-	st.global.u32 	[%rd23], %r143;
-	mov.u32 	%r144, -1;
-	st.global.u32 	[%rd24], %r144;
+	mov.u32 	%r142, -8388608;
+	st.global.u32 	[%rd23], %r142;
+	mov.u32 	%r143, -1;
+	st.global.u32 	[%rd24], %r143;
 
 $L__BB0_33:
-	add.s32 	%r158, %r158, 1;
-	add.s32 	%r157, %r157, %r52;
+	add.s32 	%r157, %r157, 1;
+	add.s32 	%r156, %r156, %r52;
 	add.s64 	%rd49, %rd49, 8;
-	add.s32 	%r159, %r159, -1;
-	setp.ne.s32 	%p16, %r159, 0;
+	add.s32 	%r158, %r158, -1;
+	setp.ne.s32 	%p16, %r158, 0;
 	@%p16 bra 	$L__BB0_30;
 
 $L__BB0_34:
@@ -330,62 +330,59 @@ $L__BB0_34:
 	// .globl	__anyhit__
 .visible .entry __anyhit__()
 {
-	.reg .pred 	%p<10>;
+	.reg .pred 	%p<9>;
 	.reg .b16 	%rs<2>;
-	.reg .f32 	%f<30>;
+	.reg .f32 	%f<29>;
 	.reg .b32 	%r<18>;
-	.reg .b64 	%rd<14>;
+	.reg .b64 	%rd<12>;
 
 
 	// begin inline asm
-	call (%r3), _optix_read_primitive_idx, ();
+	call (%r3), _optix_read_instance_idx, ();
 	// end inline asm
-	mul.wide.u32 	%rd2, %r3, -858993459;
-	shr.u64 	%rd3, %rd2, 36;
-	cvt.u32.u64 	%r1, %rd3;
-	ld.const.u64 	%rd4, [optixLaunchParams+8];
-	cvta.to.global.u64 	%rd5, %rd4;
-	mul.wide.u32 	%rd6, %r1, 16;
-	add.s64 	%rd7, %rd5, %rd6;
-	ld.global.v4.f32 	{%f9, %f10, %f11, %f12}, [%rd7];
+	ld.const.u64 	%rd2, [optixLaunchParams+8];
+	cvta.to.global.u64 	%rd3, %rd2;
+	mul.wide.u32 	%rd4, %r3, 16;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.v4.f32 	{%f8, %f9, %f10, %f11}, [%rd5];
 	mov.u32 	%r5, 0;
 	mov.u32 	%r7, 1;
 	// begin inline asm
 	call (%r4), _optix_get_payload, (%r5);
 	// end inline asm
-	cvt.u64.u32 	%rd8, %r4;
+	cvt.u64.u32 	%rd6, %r4;
 	// begin inline asm
 	call (%r6), _optix_get_payload, (%r7);
 	// end inline asm
-	cvt.u64.u32 	%rd9, %r6;
-	bfi.b64 	%rd1, %rd9, %rd8, 32, 32;
+	cvt.u64.u32 	%rd7, %r6;
+	bfi.b64 	%rd1, %rd7, %rd6, 32, 32;
 	// begin inline asm
-	call (%f5), _optix_get_ray_tmax, ();
+	call (%f4), _optix_get_ray_tmax, ();
 	// end inline asm
 	// begin inline asm
-	call (%f6), _optix_get_object_ray_origin_x, ();
+	call (%f5), _optix_get_world_ray_origin_x, ();
 	// end inline asm
 	// begin inline asm
-	call (%f7), _optix_get_object_ray_origin_y, ();
+	call (%f6), _optix_get_world_ray_origin_y, ();
 	// end inline asm
 	// begin inline asm
-	call (%f8), _optix_get_object_ray_origin_z, ();
+	call (%f7), _optix_get_world_ray_origin_z, ();
 	// end inline asm
+	sub.f32 	%f16, %f8, %f5;
 	sub.f32 	%f17, %f9, %f6;
 	sub.f32 	%f18, %f10, %f7;
-	sub.f32 	%f19, %f11, %f8;
-	ld.const.f32 	%f20, [optixLaunchParams+40];
-	sqrt.rn.f32 	%f21, %f20;
-	mul.f32 	%f22, %f12, %f21;
-	mul.f32 	%f23, %f18, %f18;
-	fma.rn.f32 	%f24, %f17, %f17, %f23;
-	fma.rn.f32 	%f25, %f19, %f19, %f24;
-	sqrt.rn.f32 	%f2, %f25;
-	setp.geu.f32 	%p1, %f2, %f22;
+	ld.const.f32 	%f19, [optixLaunchParams+40];
+	sqrt.rn.f32 	%f20, %f19;
+	mul.f32 	%f21, %f11, %f20;
+	mul.f32 	%f22, %f17, %f17;
+	fma.rn.f32 	%f23, %f16, %f16, %f22;
+	fma.rn.f32 	%f24, %f18, %f18, %f23;
+	sqrt.rn.f32 	%f2, %f24;
+	setp.gtu.f32 	%p1, %f2, %f21;
 	@%p1 bra 	$L__BB1_10;
 
-	ld.f32 	%f26, [%rd1+8200];
-	setp.gtu.f32 	%p2, %f2, %f26;
+	ld.f32 	%f25, [%rd1+8200];
+	setp.gtu.f32 	%p2, %f2, %f25;
 	@%p2 bra 	$L__BB1_10;
 
 	ld.v2.u32 	{%r8, %r9}, [%rd1+8192];
@@ -404,10 +401,10 @@ $L__BB1_7:
 $L__BB1_9:
 	add.s32 	%r14, %r8, 1;
 	st.u32 	[%rd1+8192], %r14;
-	mul.wide.s32 	%rd12, %r8, 8;
-	add.s64 	%rd13, %rd1, %rd12;
+	mul.wide.s32 	%rd10, %r8, 8;
+	add.s64 	%rd11, %rd1, %rd10;
 	mov.b32 	%r15, %f2;
-	st.v2.u32 	[%rd13], {%r15, %r1};
+	st.v2.u32 	[%rd11], {%r15, %r3};
 	bra.uni 	$L__BB1_10;
 
 $L__BB1_3:
@@ -421,10 +418,10 @@ $L__BB1_3:
 $L__BB1_6:
 	add.s32 	%r12, %r8, 1;
 	st.u32 	[%rd1+8192], %r12;
-	mul.wide.s32 	%rd10, %r8, 8;
-	add.s64 	%rd11, %rd1, %rd10;
+	mul.wide.s32 	%rd8, %r8, 8;
+	add.s64 	%rd9, %rd1, %rd8;
 	mov.b32 	%r13, %f2;
-	st.v2.u32 	[%rd11], {%r13, %r1};
+	st.v2.u32 	[%rd9], {%r13, %r3};
 	bra.uni 	$L__BB1_10;
 
 $L__BB1_5:
@@ -435,31 +432,20 @@ $L__BB1_10:
 	ld.const.u32 	%r16, [optixLaunchParams+44];
 	ld.u32 	%r17, [%rd1+8192];
 	setp.lt.s32 	%p7, %r17, %r16;
-	ld.const.f32 	%f4, [optixLaunchParams+48];
-	@%p7 bra 	$L__BB1_13;
-	bra.uni 	$L__BB1_11;
+	@%p7 bra 	$L__BB1_12;
+
+	ld.f32 	%f26, [%rd1+8196];
+	ld.const.f32 	%f27, [optixLaunchParams+48];
+	add.f32 	%f28, %f27, %f26;
+	setp.gtu.f32 	%p8, %f4, %f28;
+	@%p8 bra 	$L__BB1_13;
+
+$L__BB1_12:
+	// begin inline asm
+	call _optix_ignore_intersection, ();
+	// end inline asm
 
 $L__BB1_13:
-	add.f32 	%f29, %f4, %f4;
-	setp.gtu.f32 	%p9, %f5, %f29;
-	@%p9 bra 	$L__BB1_15;
-
-	// begin inline asm
-	call _optix_ignore_intersection, ();
-	// end inline asm
-	bra.uni 	$L__BB1_15;
-
-$L__BB1_11:
-	ld.f32 	%f27, [%rd1+8196];
-	add.f32 	%f28, %f4, %f27;
-	setp.gtu.f32 	%p8, %f5, %f28;
-	@%p8 bra 	$L__BB1_15;
-
-	// begin inline asm
-	call _optix_ignore_intersection, ();
-	// end inline asm
-
-$L__BB1_15:
 	ret;
 
 }
