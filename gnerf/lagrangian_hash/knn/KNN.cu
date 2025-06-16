@@ -138,7 +138,7 @@ extern "C" bool CUDA_KNN_Init(float chi_square_squared_radius, S_CUDA_KNN* knn) 
 	// *********************************************************************************************
 
 	OptixPipelineLinkOptions pipelineLinkOptions = {};
-	pipelineLinkOptions.maxTraceDepth = 0;
+	pipelineLinkOptions.maxTraceDepth = 1;
 
 	OptixProgramGroup program_groups[] = { cknn.raygenPG, cknn.missPG, cknn.hitgroupPG };
 
