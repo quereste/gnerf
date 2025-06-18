@@ -518,6 +518,11 @@ extern "C" bool CUDA_KNN_Fit(float4 *means, int number_of_means, S_CUDA_KNN* knn
 
 	// *********************************************************************************************
 
+	if (cknn.instancesBuffer != NULL) {
+		cudaFree(cknn.instancesBuffer);
+		cknn.instancesBuffer = NULL;
+	}
+
 	cudaMalloc(&cknn.instancesBuffer, sizeof(OptixInstance) * ((number_of_means + 31) & -32)); // !!! !!! !!!
 	error_CUDA = cudaGetLastError();
 	if (error_CUDA != cudaSuccess) return false;

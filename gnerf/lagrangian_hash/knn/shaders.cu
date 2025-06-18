@@ -36,7 +36,7 @@ extern "C" __global__ void __raygen__() {
 
 	// *** *** *** *** ***
 
-	rp.max_dist_so_far_old = INFINITY;
+	rp.max_dist_so_far_old = optixLaunchParams.max_R;
 	do {
 		rp.neighbors_num = 0;
 		rp.max_dist_so_far = -INFINITY;
@@ -47,7 +47,7 @@ extern "C" __global__ void __raygen__() {
 			make_float3(queried_point.x, queried_point.y, queried_point.z),
 			v,
 			0.0f,
-			2.0f * optixLaunchParams.max_R, // !!! !!! !!!
+			optixLaunchParams.max_R + rp.max_dist_so_far_old, // !!! !!! !!!
 			0.0f,
 			OptixVisibilityMask(255),
 			OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT | OPTIX_RAY_FLAG_CULL_FRONT_FACING_TRIANGLES,

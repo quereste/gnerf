@@ -92,3 +92,5 @@ python gnerf/train.py gnerf --help
   year      = {2024},
 }
 ```
+
+nvcc -I/workspace/gnerf/NVIDIA-OptiX-SDK-7.6.0-linux64-x86_64/include -lcuda -o main main.cu KNN.cu

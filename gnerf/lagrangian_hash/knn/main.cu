@@ -40,115 +40,105 @@ __global__ void SampleBoxUniform(unsigned n, unsigned nStart, float4 lower_bound
 
 // *** *** *** *** ***
 
-const int NUMBER_OF_MEANS = 1024 * 256;
+const int NUMBER_OF_MEANS = 1024 * 1024 * 1;
 const int NUMBER_OF_QUERIED_POINTS = 1024 * 1024 * 32;
 const int K = 16;
 
-const float4 lower_bound_means = make_float4(-1.0f, -1.0f, -1.0f, 0.01f);
+const float4 lower_bound_means = make_float4(-1.0f, -1.0f, -1.0f, 0.0f);
 const float4 upper_bound_means = make_float4(1.0f, 1.0f, 1.0f, 0.01f);
 
 const float4 lower_bound_queried_points = make_float4(-1.0f, -1.0f, -1.0f, 0.0f);
 const float4 upper_bound_queried_points = make_float4(1.0f, 1.0f, 1.0f, 0.0f);
 
-const float chi_square_squared_radius = 11.3449f;
+float chi_square_squared_radius = 11.3449f;
 
 // *** *** *** *** ***
 
 int main() {
 	cudaError_t error_CUDA;
 
-	error_CUDA = cudaSetDevice(0);
-	if (error_CUDA != cudaSuccess) printf("An error occurred... .");
-
 	// *** *** *** *** ***
 
-	S_CUDA_KNN* cknn = new S_CUDA_KNN;
-	bool result;
-
-	result = CUDA_KNN_Init(chi_square_squared_radius, cknn);
-	if (!result) {
-		printf("CUDA_KNN_Init failed... .\n");
-		printf("An error occurred... .");
-	} else
-		printf("CUDA_KNN_Init succeeded... .\n");
+	error_CUDA = cudaSetDevice(0);
+	if (error_CUDA != cudaSuccess) return false;
 
 	// *** *** *** *** ***
 
 	unsigned n = 0;
-	int number_of_passes = 1;
 
-	while (true) {
-		float4 *means;
-		
-		error_CUDA = cudaMalloc(&means, sizeof(float4) * NUMBER_OF_MEANS);
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
+	// *** *** *** *** ***
 
-		SampleBoxUniform<<<(NUMBER_OF_MEANS + 63) >> 6, 64>>>(NUMBER_OF_MEANS, n, lower_bound_means, upper_bound_means, means);
-		error_CUDA = cudaGetLastError();
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
+	float4 *means;
 
-		float *means_host = (float *)malloc(sizeof(float4) * NUMBER_OF_MEANS);
-		error_CUDA = cudaMemcpy(means_host, means, sizeof(float4) * NUMBER_OF_MEANS, cudaMemcpyDeviceToHost);
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
+	error_CUDA = cudaMalloc(&means, sizeof(float4) * NUMBER_OF_MEANS);
+	if (error_CUDA != cudaSuccess) return false;
 
-		for (int i = 0; i < 10 && i < NUMBER_OF_MEANS; ++i) {
-			float4* m = ((float4*)means_host) + i;
-			printf("mean[%d]: (%f, %f, %f, %f)\n", i, m->x, m->y, m->z, m->w);
-		}
+	SampleBoxUniform<<<(NUMBER_OF_MEANS + 63) >> 6, 64>>>(NUMBER_OF_MEANS, n, lower_bound_means, upper_bound_means, means);
+	error_CUDA = cudaGetLastError();
+	if (error_CUDA != cudaSuccess) return false;
 
-		free(means_host);
+	n += (NUMBER_OF_MEANS << 2); // !!! !!! !!!
 
-		n += (NUMBER_OF_MEANS << 2); // !!! !!! !!!
+	// *** *** *** *** ***
+
+	float4 *queried_points;
+
+	error_CUDA = cudaMalloc(&queried_points, sizeof(float4) * NUMBER_OF_QUERIED_POINTS);
+	if (error_CUDA != cudaSuccess) return false;
+
+	SampleBoxUniform<<<(NUMBER_OF_QUERIED_POINTS + 63) >> 6, 64>>>(
+		NUMBER_OF_QUERIED_POINTS,
+		n,
+		lower_bound_queried_points,
+		upper_bound_queried_points,
+		queried_points
+		);
+	error_CUDA = cudaGetLastError();
+	if (error_CUDA != cudaSuccess) return false;
+
+	n += (NUMBER_OF_QUERIED_POINTS << 2); // !!! !!! !!!
+
+	// *** *** *** *** ***
+
+	S_CUDA_KNN cknn;
+	bool result;
+
+	// *** *** *** *** ***
+
+	result = CUDA_KNN_Init(chi_square_squared_radius, &cknn);
+	if (!result) {
+		printf("CUDA_KNN_Init failed... .\n");
+		return false;
+	} else
+		printf("CUDA_KNN_Init succeeded... .\n");
+
+
+
+	while(true) {
 
 		// *** *** *** *** ***
 
-		result = CUDA_KNN_Fit(means, NUMBER_OF_MEANS, cknn);
+		result = CUDA_KNN_Fit(means, NUMBER_OF_MEANS, &cknn);
 		if (!result) {
 			printf("CUDA_KNN_Fit failed... .\n");
-			printf("An error occurred... .");
+			return false;
 		} else
 			printf("CUDA_KNN_Fit succeeded... .\n");
 
-		// *** *** *** *** ***
-
-		float4 *queried_points;
-
-		error_CUDA = cudaMalloc(&queried_points, sizeof(float4) * NUMBER_OF_QUERIED_POINTS);
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
-
-		SampleBoxUniform<<<(NUMBER_OF_QUERIED_POINTS + 63) >> 6, 64>>>(
-			NUMBER_OF_QUERIED_POINTS,
-			n,
-			lower_bound_queried_points,
-			upper_bound_queried_points,
-			queried_points
-		);
-		error_CUDA = cudaGetLastError();
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
-
-		float *queried_points_host = (float *)malloc(sizeof(float4) * NUMBER_OF_QUERIED_POINTS);
-		error_CUDA = cudaMemcpy(queried_points_host, queried_points, sizeof(float4) * NUMBER_OF_QUERIED_POINTS, cudaMemcpyDeviceToHost);
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
-
-		for (int i = 0; i < 10 && i < NUMBER_OF_QUERIED_POINTS; ++i) {
-			float4* qp = ((float4*)queried_points_host) + i;
-			printf("queried_point[%d]: (%f, %f, %f, %f)\n", i, qp->x, qp->y, qp->z, qp->w);
-		}
-
-		free(queried_points_host);
-
-		n += (NUMBER_OF_QUERIED_POINTS << 2); // !!! !!! !!!
+		printf("Done... .\n");
 
 		// *** *** *** *** ***
+
+		int passNum = 1;
 
 		float *distances;
 		int *indices;
 
 		error_CUDA = cudaMalloc(&distances, sizeof(float) * NUMBER_OF_QUERIED_POINTS * K);
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
+		if (error_CUDA != cudaSuccess) return false;
 
 		error_CUDA = cudaMalloc(&indices, sizeof(int) * NUMBER_OF_QUERIED_POINTS * K);
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
+		if (error_CUDA != cudaSuccess) return false;
 
 		result = CUDA_KNN_KNeighbors(
 			queried_points,
@@ -156,51 +146,111 @@ int main() {
 			K,
 			distances,
 			indices,
-			cknn
+			&cknn
 		);
 		if (!result) {
-			printf("CUDA_KNN_KNeighbors failed... .\n");
-			printf("An error occurred... .");
+			printf("[%d]: CUDA_KNN_KNeighbors failed... .\n", passNum);
+			return false;
 		} else
-			printf("CUDA_KNN_KNeighbors succeeded... .\n");
+			printf("[%d]: CUDA_KNN_KNeighbors succeeded... .\n", passNum);
 
 		// *** *** *** *** ***
 
 		// TEST (massive slowdown due to the Device->Host memory copy)
-		/*float *distances_host = (float *)malloc(sizeof(float) * NUMBER_OF_QUERIED_POINTS * K);
+		float *distances_host = (float *)malloc(sizeof(float) * NUMBER_OF_QUERIED_POINTS * K);
 		int *indices_host = (int *)malloc(sizeof(int) * NUMBER_OF_QUERIED_POINTS * K);
+		float4 *means_host = (float4 *)malloc(sizeof(float4) * NUMBER_OF_MEANS);
+		float4 *queried_points_host = (float4 *)malloc(sizeof(float4) * NUMBER_OF_QUERIED_POINTS);
 
 		error_CUDA = cudaMemcpy(distances_host, distances, sizeof(float) * NUMBER_OF_QUERIED_POINTS * K, cudaMemcpyDeviceToHost);
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
+		if (error_CUDA != cudaSuccess) return false;
 		
 		error_CUDA = cudaMemcpy(indices_host, indices, sizeof(int) * NUMBER_OF_QUERIED_POINTS * K, cudaMemcpyDeviceToHost);
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
+		if (error_CUDA != cudaSuccess) return false;
+
+		error_CUDA = cudaMemcpy(means_host, means, sizeof(float4) * NUMBER_OF_MEANS, cudaMemcpyDeviceToHost);
+		if (error_CUDA != cudaSuccess) return false;
+
+		error_CUDA = cudaMemcpy(queried_points_host, queried_points, sizeof(float4) * NUMBER_OF_QUERIED_POINTS, cudaMemcpyDeviceToHost);
+		if (error_CUDA != cudaSuccess) return false;
 		
 		for (int j = 0; j < K; ++j) {
-			float distance = distances_host[(j * NUMBER_OF_QUERIED_POINTS) + 0];
-			int index = indices_host[(j * NUMBER_OF_QUERIED_POINTS) + 0];
-			printf("POINT: %d; RANK %d; DISTANCE: %f; INDEX: %d;\n", 0 + 1, j + 1, distance, index);
+			float distance = distances_host[(j * NUMBER_OF_QUERIED_POINTS) + 23];
+			int index = indices_host[(j * NUMBER_OF_QUERIED_POINTS) + 23];
+			printf("POINT: %d; RANK: %d; DISTANCE: %f; INDEX: %d;\n", 0 + 1, j + 1, distance, index);
 		}
+
+		printf("\n");
+
+		float *avg_distance = (float *)malloc(sizeof(float) * K);
+
+		for (int i = 0; i < K; ++i) avg_distance[i] = INFINITY;
+		for (int i = 0; i < 128; ++i) {
+			float4 point = queried_points_host[i];
+			float dist_min_prev = -INFINITY;
+			int ind_min_prev = -1;
+
+			for (int j = 0; j < K; ++j) {
+				float dist_min = INFINITY;
+				int ind_min = NUMBER_OF_QUERIED_POINTS;
+
+				for (int k = 0; k < NUMBER_OF_MEANS; ++k) {
+					float4 mean = means_host[k];
+					float3 d = make_float3(mean.x - point.x, mean.y - point.y, mean.z - point.z);
+					float dist = sqrtf((d.x * d.x) + (d.y * d.y) + (d.z * d.z));
+					if (dist < dist_min) {
+						if ((dist > dist_min_prev) || (((dist == dist_min_prev) && (k > ind_min_prev)))) {
+							dist_min = dist;
+							ind_min = k;
+						}
+					} else {
+						if ((dist == dist_min) && (k < ind_min)) {
+							if ((dist > dist_min_prev) || (((dist == dist_min_prev) && (k > ind_min_prev)))) {
+								dist_min = dist;
+								ind_min = k;
+							}
+						}
+					}
+				}
+
+				float dist_approx = distances_host[(j * NUMBER_OF_QUERIED_POINTS) + i];
+				int ind = indices_host[(j * NUMBER_OF_QUERIED_POINTS) + i];
+				float tmp = fabsf(dist_approx - dist_min);
+				if (isfinite(tmp)) {
+					if (!isfinite(avg_distance[j])) avg_distance[j] = tmp;
+					else
+						avg_distance[j] += tmp;
+				}
+
+				dist_min_prev = dist_min;
+				ind_min_prev = ind_min;
+			}
+		}
+		for (int i = 0; i < K; ++i) avg_distance[i] /= K;
+		for (int i = 0; i < K; ++i) printf("%d: %f\n", i + 1, avg_distance[i]);
+
 		free(distances_host);
-		free(indices_host);*/
+		free(indices_host);
+		free(means_host);
+		free(queried_points_host);
+		free(avg_distance);
 
 		// *** *** *** *** ***
-
-		error_CUDA = cudaFree(means);
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
-
-		error_CUDA = cudaFree(queried_points);
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
 
 		error_CUDA = cudaFree(distances);
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
+		if (error_CUDA != cudaSuccess) return false;
 
 		error_CUDA = cudaFree(indices);
-		if (error_CUDA != cudaSuccess) printf("An error occurred... .");
+		if (error_CUDA != cudaSuccess) return false;
 
 		// *** *** *** *** ***
 
-		printf("NUMBER OF PASSES: %d\n", number_of_passes);
-		++number_of_passes;
+		++passNum;
 	}
+
+	error_CUDA = cudaFree(means);
+	if (error_CUDA != cudaSuccess) return false;
+
+	error_CUDA = cudaFree(queried_points);
+	if (error_CUDA != cudaSuccess) return false;
 }
