@@ -40,7 +40,7 @@ class SplashEncoding(nn.Module):
         self.total_gaus = self.init_mean()
         self.feats = (torch.randn(self.total_gaus, self.n_features_per_gauss) * 1e-2).to(device='cuda')
         self.feats = nn.Parameter(self.feats)
-        self.means = nn.Parameter(self.means, requires_grad=False)
+        self.means = nn.Parameter(self.means)
         self.gaussian_constant = torch.sqrt(torch.tensor(2 * torch.pi, device='cuda'))
         if not fixed_std:
             self.stds = nn.Parameter(torch.normal(r, 2e-2, size=(self.total_gaus, 1), device='cuda'))
