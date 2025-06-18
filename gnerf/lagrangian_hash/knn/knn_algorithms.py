@@ -167,7 +167,7 @@ class OptixKNN(BaseKNN):
         super().__init__(config)
 
         self.cknn = optix_knn.S_CUDA_KNN()
-        optix_knn.CUDA_KNN_Init(11.3449, self.cknn)
+        optix_knn.CUDA_KNN_Init(1.13449, self.cknn)
 
     def get_nearest_neighbours(self, query: torch.Tensor, points: torch.Tensor) -> torch.Tensor:
         """
@@ -197,7 +197,22 @@ class OptixKNN(BaseKNN):
 
         optix_knn.CUDA_KNN_KNeighbors(pad_query, self.config.n_neighbours, distances, indices, self.cknn)
 
+        non_negative = (indices >= 0).sum().item()
+        total = indices.numel()
+        percentage = 100.0 * non_negative / total if total > 0 else 0.0
+        print(f"Non-negative values: {non_negative}/{total} ({percentage:.2f}%)")
+        # print(distances)
+        # print(indices)
+
+        # print(a)
+
         distances = distances.T
         indices = indices.T
 
         return indices
+    
+    def __del__(self):
+        """Clean up resources."""
+        optix_knn.CUDA_KNN_Destroy(self.cknn)
+        self.cknn = None
+        print("OptiX KNN resources cleaned up.")

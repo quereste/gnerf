@@ -12,6 +12,7 @@ import torch.autograd.profiler as profiler
 from typing import Optional
 from utils.general_utils import append_sys_path
 from gnerf.lagrangian_hash.knn.knn_algorithms import BaseKNN
+import open3d as o3d
 
 
 append_sys_path()
@@ -36,25 +37,44 @@ class SplashEncoding(nn.Module):
         self.n_features_per_gauss = n_features_per_gauss
 
         r = 0.125
-        self.total_gaus = n_gausses # fixed number of gauss for now
+        self.total_gaus = self.init_mean()
         self.feats = (torch.randn(self.total_gaus, self.n_features_per_gauss) * 1e-2).to(device='cuda')
         self.feats = nn.Parameter(self.feats)
-        self.init_mean()
-        self.means = nn.Parameter(self.means)
+        self.means = nn.Parameter(self.means, requires_grad=False)
         self.gaussian_constant = torch.sqrt(torch.tensor(2 * torch.pi, device='cuda'))
         if not fixed_std:
             self.stds = nn.Parameter(torch.normal(r, 2e-2, size=(self.total_gaus, 1), device='cuda'))
         self.knn = knn_algorithm
     
-    def init_mean(self):
-        N = self.total_gaus
-        log.info(f'Total number of gauss: {self.total_gaus}')
-        pts = np.random.randn(N, 3)
-        r = np.sqrt(np.random.rand(N, 1))
-        pts = pts / np.linalg.norm(pts, axis=1)[:, None] * r
-        pts = pts * 0.5 + 0.5 # [0.25 ... 0.75]
+    # def init_mean(self):
+        # N = self.total_gaus
+        # log.info(f'Total number of gauss: {self.total_gaus}')
+        # pts = np.random.randn(N, 3)
+        # r = np.sqrt(np.random.rand(N, 1))
+        # pts = pts / np.linalg.norm(pts, axis=1)[:, None] * r
+        # pts = pts * 0.5 + 0.5 # [0.25 ... 0.75]
         
+        # self.means = torch.tensor(pts, dtype=torch.float32, device='cuda')
+
+    def init_mean(self):
+        # Load .ply file and initialize means
+        ply_path1 = "/workspace/gnerf/means_lod14@20000.ply"
+        ply_path2 = "/workspace/gnerf/means_lod15@20000.ply"
+        pcd1 = o3d.io.read_point_cloud(ply_path1)
+        pcd2 = o3d.io.read_point_cloud(ply_path2)
+        pts1 = np.asarray(pcd1.points)
+        pts2 = np.asarray(pcd2.points)
+        pts = np.concatenate([pts1, pts2], axis=0)
+
+        # if pts.shape[0] > 40000:
+        #     idx = np.random.choice(pts.shape[0], 40000, replace=False)
+        #     pts = pts[idx]
+
         self.means = torch.tensor(pts, dtype=torch.float32, device='cuda')
+
+        print(f"Loaded pointclud with {self.means.shape} points.")
+
+        return self.means.shape[0]
 
 
     def update_factor(self):
@@ -106,9 +126,9 @@ class SplashEncoding(nn.Module):
         nearest_means = self.means[nearest_gausses_indicies]
         squared_gausses_distance = torch.sum((coords[:, None, :] - nearest_means) ** 2, dim=-1)
 
-        start_time = time.time()
+        # start_time = time.time()
         feats = self._calculate(coords, nearest_gausses_indicies, squared_gausses_distance, batch_size=batch_size)
-        print(f"Features: {time.time() - start_time:.4f} seconds")
+        # print(f"Features: {time.time() - start_time:.4f} seconds")
 
         return feats, squared_gausses_distance[:, 0]
     

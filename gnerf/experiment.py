@@ -93,7 +93,7 @@ class TrainerConfig(ExperimentConfig):
     """Random seed for reproducibility."""
     pause_on_start: bool = True
     """Pause the training until the user clicks the start button in the viewer."""
-    max_steps: int = 2000
+    max_steps: int = 20000
     """Maximum number of training steps."""
     log_every: int = 200
     """Logging interval."""
@@ -257,7 +257,7 @@ class Trainer(nn.Module):
                 grid_coords = grid_coords.view(1, -1, 1, 1, 3)  # shape (1, N, 1, 1, 3)
 
                 # Sample the distance field
-                aabb = self.config.model.aabb.to(means.device)
+                aabb = self.config.model.aabb.to('cuda')
                 distances = trilinear_interpolation(self.distance_field, means, aabb)
 
             loss += calculate_smooth_l1_loss(rgb, pixels)

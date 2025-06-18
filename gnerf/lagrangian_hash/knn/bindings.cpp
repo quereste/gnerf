@@ -63,6 +63,11 @@ bool py_cuda_knn_kneighbors(
     );
 }
 
+bool py_cuda_knn_destroy(S_CUDA_KNN &cknn) {
+    // Assuming you have a destroy function for S_CUDA_KNN
+    return CUDA_KNN_Destroy(&cknn);
+}
+
 PYBIND11_MODULE(optix_knn, m) {
     py::class_<S_CUDA_KNN>(m, "S_CUDA_KNN")
         .def(py::init<>())
@@ -78,4 +83,5 @@ PYBIND11_MODULE(optix_knn, m) {
         py::arg("indices"),
         py::arg("knn")
     );
+    m.def("CUDA_KNN_Destroy", &py_cuda_knn_destroy, py::arg("knn"));
 }
