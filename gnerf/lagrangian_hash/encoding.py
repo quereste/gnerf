@@ -66,9 +66,9 @@ class SplashEncoding(nn.Module):
         pts2 = np.asarray(pcd2.points)
         pts = np.concatenate([pts1, pts2], axis=0)
 
-        # if pts.shape[0] > 40000:
-        #     idx = np.random.choice(pts.shape[0], 40000, replace=False)
-        #     pts = pts[idx]
+        if pts.shape[0] > 40000:
+            idx = np.random.choice(pts.shape[0], 40000, replace=False)
+            pts = pts[idx]
 
         self.means = torch.tensor(pts, dtype=torch.float32, device='cuda')
 

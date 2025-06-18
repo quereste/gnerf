@@ -93,7 +93,7 @@ class TrainerConfig(ExperimentConfig):
     """Random seed for reproducibility."""
     pause_on_start: bool = True
     """Pause the training until the user clicks the start button in the viewer."""
-    max_steps: int = 20000
+    max_steps: int = 1000
     """Maximum number of training steps."""
     log_every: int = 200
     """Logging interval."""

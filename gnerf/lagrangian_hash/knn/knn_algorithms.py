@@ -197,15 +197,6 @@ class OptixKNN(BaseKNN):
 
         optix_knn.CUDA_KNN_KNeighbors(pad_query, self.config.n_neighbours, distances, indices, self.cknn)
 
-        non_negative = (indices >= 0).sum().item()
-        total = indices.numel()
-        percentage = 100.0 * non_negative / total if total > 0 else 0.0
-        print(f"Non-negative values: {non_negative}/{total} ({percentage:.2f}%)")
-        # print(distances)
-        # print(indices)
-
-        # print(a)
-
         distances = distances.T
         indices = indices.T
 
