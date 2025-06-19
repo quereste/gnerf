@@ -40,10 +40,11 @@ class SplashEncoding(nn.Module):
         self.total_gaus = self.init_mean()
         self.feats = (torch.randn(self.total_gaus, self.n_features_per_gauss) * 1e-2).to(device='cuda')
         self.feats = nn.Parameter(self.feats)
-        self.means = nn.Parameter(self.means)
+        self.means = nn.Parameter(self.means, requires_grad=False)
         self.gaussian_constant = torch.sqrt(torch.tensor(2 * torch.pi, device='cuda'))
-        if not fixed_std:
-            self.stds = nn.Parameter(torch.normal(r, 2e-2, size=(self.total_gaus, 1), device='cuda'))
+        D = self.means.shape[1]
+        cov_init = torch.eye(D, device='cuda').unsqueeze(0).repeat(self.total_gaus, 1, 1) * 0.1
+        self.covariances = nn.Parameter(cov_init)
         self.knn = knn_algorithm
     
     # def init_mean(self):
@@ -66,9 +67,9 @@ class SplashEncoding(nn.Module):
         pts2 = np.asarray(pcd2.points)
         pts = np.concatenate([pts1, pts2], axis=0)
 
-        if pts.shape[0] > 40000:
-            idx = np.random.choice(pts.shape[0], 40000, replace=False)
-            pts = pts[idx]
+        # if pts.shape[0] > 40000:
+        #     idx = np.random.choice(pts.shape[0], 40000, replace=False)
+        #     pts = pts[idx]
 
         self.means = torch.tensor(pts, dtype=torch.float32, device='cuda')
 
@@ -78,7 +79,7 @@ class SplashEncoding(nn.Module):
 
 
     def update_factor(self):
-        self.stds = self.stds * self.decay_factor
+        self.covariances = self.covariances * self.decay_factor
 
 
     def get_means(self):
@@ -90,27 +91,42 @@ class SplashEncoding(nn.Module):
         self.means = nn.Parameter(self.means)
 
 
-    def get_stds(self):
-        return self.stds
+    def get_covariances(self):
+        return self.covariances
     
 
-    def _calculate(self, coords, nearest_gausses_indicies, sq_dists, batch_size=1000):
+    def _calculate(self, coords, nearest_gausses_indicies, sq_dists, batch_size=100000):
         num_coords = coords.shape[0]
         feature_dim = self.feats.shape[1]
+        D = coords.shape[1]
+        eps = 1e-5
 
         feature_vector = torch.zeros((num_coords, feature_dim), device=coords.device)
 
         for i in range(0, num_coords, batch_size):
-            batch_indices = nearest_gausses_indicies[i : i + batch_size]  # [batch_size, num_nearest]
-            sq_dist = sq_dists[i : i + batch_size, :, None]  # [batch_size, num_nearest]
+            batch_indices = nearest_gausses_indicies[i : i + batch_size]  # [B, K]
+            batch_coords = coords[i : i + batch_size]  # [B, D]
+            nearest_features = self.feats[batch_indices]  # [B, K, F]
+            batch_factors = self.covariances[batch_indices]  # [B, K, D, D]
+            batch_means = self.means[batch_indices]       # [B, K, D]
 
-            nearest_features = self.feats[batch_indices]  # [batch_size, num_nearest, feature_dim]
+            eye = torch.eye(D, device=coords.device).expand(batch_factors.shape)
+            batch_covs = torch.matmul(batch_factors, batch_factors.transpose(-2, -1)) + eps * eye  # [B, K, D, D]
 
-            stds = torch.square(self.stds[batch_indices])  # [batch_size, num_nearest]
-            gau_weights = torch.exp(-sq_dist / (2 * stds)) / (self.gaussian_constant * torch.sqrt(stds) + 1e-7)  # [batch_size, num_nearest, 1]
+            # Cholesky decomposition
+            L = torch.linalg.cholesky(batch_covs)  # [B, K, D, D]
+            diff = batch_coords[:, None, :] - batch_means  # [B, K, D]
+            diff_unsq = diff.unsqueeze(-1)  # [B, K, D, 1]
+            sol = torch.cholesky_solve(diff_unsq, L)  # [B, K, D, 1]
+            mdist = torch.matmul(diff_unsq.transpose(-2, -1), sol).squeeze(-1).squeeze(-1)  # [B, K]
 
-            weighted_features = nearest_features * gau_weights  # [batch_size, num_nearest, feature_dim]
-            batch_feature_vector = torch.sum(weighted_features, dim=1)  # [batch_size, feature_dim]
+            # Determinant from Cholesky
+            det = L.diagonal(dim1=-2, dim2=-1).prod(-1) ** 2  # [B, K]
+            norm_const = torch.sqrt((2 * torch.pi) ** D * det + eps)
+
+            gau_weights = torch.exp(-0.5 * mdist) / (norm_const + eps)  # [B, K]
+            weighted_features = nearest_features * gau_weights.unsqueeze(-1)  # [B, K, F]
+            batch_feature_vector = torch.sum(weighted_features, dim=1)  # [B, F]
 
             feature_vector[i : i + batch_size] = batch_feature_vector
 

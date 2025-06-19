@@ -21,7 +21,7 @@ def initialize_optimizer(config, radiance_field, weight_decay):
     
     gau_params, codebook_params, rest_params = [], [], []
     for name in params_dict:
-        if ("means" in name) or ("stds" in name):
+        if ("means" in name) or ("covariances" in name):
             gau_params.append(params_dict[name])
         elif "feats" in name:
             codebook_params.append(params_dict[name])
