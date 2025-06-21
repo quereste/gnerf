@@ -65,6 +65,10 @@ class SplashEncoding(nn.Module):
         pts2 = np.asarray(pcd2.points)
         pts = np.concatenate([pts1, pts2], axis=0)
 
+        ply_path = "/workspace/gnerf/results/lego/2025-06-21_10-38-22/means@20000.ply"
+        pcd = o3d.io.read_point_cloud(ply_path)
+        pts = np.asarray(pcd.points)
+
         # if pts.shape[0] > 40000:
         #     idx = np.random.choice(pts.shape[0], 40000, replace=False)
         #     pts = pts[idx]
@@ -91,6 +95,59 @@ class SplashEncoding(nn.Module):
 
     def get_covariances(self):
         return self.covariances
+    
+
+    def densify(self, gradients, step, max_steps):
+        """
+        Add new Gaussians based on gradient direction, following the original
+        Gaussian Splatting paper (Kerbl et al., 2023).
+
+        Args:
+            gradients (Tensor): [N, 3], gradients w.r.t. position (e.g. features or means).
+            step (int): Current training step.
+            max_steps (int): Max number of training steps.
+        """
+        device = self.means.device
+        means = self.means.detach()
+        new_means = []
+
+        # Scheduled threshold (exponential interpolation)
+        grad_thresh_min = 1e-4
+        grad_thresh_max = 4e-4
+        alpha = step / float(max_steps)
+        grad_thresh = grad_thresh_min * (grad_thresh_max / grad_thresh_min) ** alpha
+
+        # Jitter config (used instead of step-based offset)
+        jitter_scale = 0.005  # or similar small value
+
+        for i in range(means.shape[0]):
+            grad = gradients[i]
+            g_pos = means[i]
+
+            grad_norm = torch.norm(grad)
+            if grad_norm > grad_thresh:
+                jitter = torch.randn(2, 3, device=device) * jitter_scale
+                new_pos = g_pos[None, :] + jitter  # [2, 3]
+                new_means.append(new_pos)
+
+        if new_means:
+            new_means = torch.cat(new_means, dim=0)  # [M, 3]
+            self.append_means(new_means)
+
+
+    def append_means(self, new_means):
+        new_feats = torch.randn(new_means.shape[0], self.n_features_per_gauss, device=new_means.device) * 1e-2
+        new_covs = torch.log(torch.ones(new_means.shape[0], 2, device=new_means.device) * 0.01)
+
+        was_trainable = self.means.requires_grad
+        self.means = nn.Parameter(torch.cat([self.means.detach(), new_means], dim=0), requires_grad=was_trainable)
+        self.feats = nn.Parameter(torch.cat([self.feats.detach(), new_feats], dim=0))
+        self.log_diag_cov_2d = nn.Parameter(torch.cat([self.log_diag_cov_2d.detach(), new_covs], dim=0))
+
+
+    def unfreeze_means(self):
+        # Unfreeze means for training
+        self.means.requires_grad_(True)
     
 
     def _calculate(self, coords, nearest_gausses_indicies, sq_dists, batch_size=100000):

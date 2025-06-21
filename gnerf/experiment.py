@@ -95,9 +95,9 @@ class TrainerConfig(ExperimentConfig):
     """Pause the training until the user clicks the start button in the viewer."""
     max_steps: int = 20000
     """Maximum number of training steps."""
-    log_every: int = 200
+    log_every: int = 20000
     """Logging interval."""
-    save_every: int = 100
+    save_every: int = 1000
     """Model saving interval."""
     visualize_every: int = 500
     """Visualization interval."""
@@ -138,9 +138,9 @@ class Trainer(nn.Module):
         # Setup the dataset
         if self.config.dataset.scene in TANKS_TEMPLE_SCENES or self.config.dataset.scene in NERF_SYNTHETIC_SCENES:
             self.train_dataset: BaseDataset = self.config.dataset.setup(split="train", num_rays=self.config.dataset.init_batch_size, device=self.device)
-            weight_decay = self.config.optimizer.weight_decay
+            self.weight_decay = self.config.optimizer.weight_decay
             if self.config.optimizer.weight_decay is None:
-                weight_decay = self.train_dataset.get_weight_decay()
+                self.weight_decay = self.train_dataset.get_weight_decay()
         else:
             error_message = f"Invalid scene: {self.config.dataset.scene}"
             raise ValueError(error_message)
@@ -155,7 +155,7 @@ class Trainer(nn.Module):
         num_params = sum(p.numel() for p in self.radiance_field.parameters() if p.requires_grad)
         CONSOLE.log(f"Number of parameters: {num_params/1e6:.2f}M")
         
-        self.optimizer = initialize_optimizer(self.config, self.radiance_field, weight_decay)
+        self.optimizer = initialize_optimizer(self.config, self.radiance_field, self.weight_decay)
         self.scheduler = initialize_scheduler(self.config, self.optimizer)
 
         # Initialize the viewer
@@ -257,6 +257,33 @@ class Trainer(nn.Module):
             self.optimizer.step()
             self.scheduler.step()
 
+            # Densify gaussians
+            if step % 1000 == 0 and step >= 1000 and step <= self.config.max_steps * 0.5:
+                print(f"Number of gaussians before densification: {self.radiance_field.mlp_base.encoding.means.shape[0]}")
+                with torch.no_grad():
+                    encoding = self.radiance_field.mlp_base.encoding
+
+                    if encoding.feats.grad is not None:
+                        grad_feats = encoding.feats.grad  # [N, D]
+                        grad_dirs = grad_feats[:, :3]
+
+                        encoding.densify(grad_dirs, step=step, max_steps=self.config.max_steps)
+
+                        # Rebuild optimizer to include new parameters
+                        self.optimizer = initialize_optimizer(self.config, self.radiance_field, self.weight_decay)
+
+                        # Resume scheduler from current step
+                        self.scheduler = initialize_scheduler(self.config, self.optimizer)
+                        for _ in range(step):
+                            self.scheduler.step()
+
+                print(f"Number of gaussians after densification: {self.radiance_field.mlp_base.encoding.means.shape[0]}")
+
+            # Unfreeze means after 75% of training
+            if step == int(self.config.max_steps * 0.75):
+                print("Unfreezing means for training")
+                self.radiance_field.mlp_base.encoding.unfreeze_means()
+                
             if step % self.config.log_every == 0:
                 elapsed_time = time.time() - tic
                 CONSOLE.log(
