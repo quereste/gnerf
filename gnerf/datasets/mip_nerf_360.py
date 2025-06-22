@@ -12,6 +12,7 @@ import open3d as o3d
 import numpy as np
 import imageio.v2 as imageio
 import torch.nn.functional as F
+import scipy.spatial.transform.rotation as rot
 
 from dataclasses import dataclass, field
 from typing import Type, Literal
@@ -20,158 +21,371 @@ from pathlib import Path
 from gnerf.datasets.utils import Rays
 from gnerf.configs.base_configs import BaseDatasetConfig, BaseDataset
 
+from typing import Dict, Optional, Any
+from enum import Enum
+import collections
 
-def read_cameras_binary(path):
-    with open(path, "rb") as f:
-        num_cameras = struct.unpack("<Q", f.read(8))[0]
-        cameras = {}
+
+class CameraModel(Enum):
+    """Enum for camera types."""
+
+    OPENCV = "OPENCV"
+    OPENCV_FISHEYE = "OPENCV_FISHEYE"
+    EQUIRECTANGULAR = "EQUIRECTANGULAR"
+    PINHOLE = "PINHOLE"
+    SIMPLE_PINHOLE = "SIMPLE_PINHOLE"
+
+def parse_colmap_camera_params(camera) -> Dict[str, Any]:
+    """
+    Parses all currently supported COLMAP cameras into the transforms.json metadata
+
+    Args:
+        camera: COLMAP camera
+    Returns:
+        transforms.json metadata containing camera's intrinsics and distortion parameters
+
+    """
+    out: Dict[str, Any] = {
+        "w": camera.width,
+        "h": camera.height,
+    }
+
+    # Parameters match https://github.com/colmap/colmap/blob/dev/src/base/camera_models.h
+    camera_params = camera.params
+    if camera.model == "SIMPLE_PINHOLE":
+        out["fl_x"] = float(camera_params[0])
+        out["fl_y"] = float(camera_params[0])
+        out["cx"] = float(camera_params[1])
+        out["cy"] = float(camera_params[2])
+        out["k1"] = 0.0
+        out["k2"] = 0.0
+        out["p1"] = 0.0
+        out["p2"] = 0.0
+        camera_model = CameraModel.OPENCV
+    elif camera.model == "PINHOLE":
+        out["fl_x"] = float(camera_params[0])
+        out["fl_y"] = float(camera_params[1])
+        out["cx"] = float(camera_params[2])
+        out["cy"] = float(camera_params[3])
+        out["k1"] = 0.0
+        out["k2"] = 0.0
+        out["p1"] = 0.0
+        out["p2"] = 0.0
+        camera_model = CameraModel.OPENCV
+    elif camera.model == "SIMPLE_RADIAL":
+        out["fl_x"] = float(camera_params[0])
+        out["fl_y"] = float(camera_params[0])
+        out["cx"] = float(camera_params[1])
+        out["cy"] = float(camera_params[2])
+        out["k1"] = float(camera_params[3])
+        out["k2"] = 0.0
+        out["p1"] = 0.0
+        out["p2"] = 0.0
+        camera_model = CameraModel.OPENCV
+    elif camera.model == "RADIAL":
+        out["fl_x"] = float(camera_params[0])
+        out["fl_y"] = float(camera_params[0])
+        out["cx"] = float(camera_params[1])
+        out["cy"] = float(camera_params[2])
+        out["k1"] = float(camera_params[3])
+        out["k2"] = float(camera_params[4])
+        out["p1"] = 0.0
+        out["p2"] = 0.0
+        camera_model = CameraModel.OPENCV
+    elif camera.model == "OPENCV":
+        out["fl_x"] = float(camera_params[0])
+        out["fl_y"] = float(camera_params[1])
+        out["cx"] = float(camera_params[2])
+        out["cy"] = float(camera_params[3])
+        out["k1"] = float(camera_params[4])
+        out["k2"] = float(camera_params[5])
+        out["p1"] = float(camera_params[6])
+        out["p2"] = float(camera_params[7])
+        camera_model = CameraModel.OPENCV
+    elif camera.model == "OPENCV_FISHEYE":
+        out["fl_x"] = float(camera_params[0])
+        out["fl_y"] = float(camera_params[1])
+        out["cx"] = float(camera_params[2])
+        out["cy"] = float(camera_params[3])
+        out["k1"] = float(camera_params[4])
+        out["k2"] = float(camera_params[5])
+        out["k3"] = float(camera_params[6])
+        out["k4"] = float(camera_params[7])
+        camera_model = CameraModel.OPENCV_FISHEYE
+    elif camera.model == "FULL_OPENCV":
+        out["fl_x"] = float(camera_params[0])
+        out["fl_y"] = float(camera_params[1])
+        out["cx"] = float(camera_params[2])
+        out["cy"] = float(camera_params[3])
+        out["k1"] = float(camera_params[4])
+        out["k2"] = float(camera_params[5])
+        out["p1"] = float(camera_params[6])
+        out["p2"] = float(camera_params[7])
+        out["k3"] = float(camera_params[8])
+        out["k4"] = float(camera_params[9])
+        out["k5"] = float(camera_params[10])
+        out["k6"] = float(camera_params[11])
+        raise NotImplementedError(f"{camera.model} camera model is not supported yet!")
+    elif camera.model == "FOV":
+        out["fl_x"] = float(camera_params[0])
+        out["fl_y"] = float(camera_params[1])
+        out["cx"] = float(camera_params[2])
+        out["cy"] = float(camera_params[3])
+        out["omega"] = float(camera_params[4])
+        raise NotImplementedError(f"{camera.model} camera model is not supported yet!")
+    elif camera.model == "SIMPLE_RADIAL_FISHEYE":
+        out["fl_x"] = float(camera_params[0])
+        out["fl_y"] = float(camera_params[0])
+        out["cx"] = float(camera_params[1])
+        out["cy"] = float(camera_params[2])
+        out["k1"] = float(camera_params[3])
+        out["k2"] = 0.0
+        out["k3"] = 0.0
+        out["k4"] = 0.0
+        camera_model = CameraModel.OPENCV_FISHEYE
+    elif camera.model == "RADIAL_FISHEYE":
+        out["fl_x"] = float(camera_params[0])
+        out["fl_y"] = float(camera_params[0])
+        out["cx"] = float(camera_params[1])
+        out["cy"] = float(camera_params[2])
+        out["k1"] = float(camera_params[3])
+        out["k2"] = float(camera_params[4])
+        out["k3"] = 0
+        out["k4"] = 0
+        camera_model = CameraModel.OPENCV_FISHEYE
+    else:
+        # THIN_PRISM_FISHEYE not supported!
+        raise NotImplementedError(f"{camera.model} camera model is not supported yet!")
+
+    out["camera_model"] = camera_model.value
+    return out
+
+
+def read_next_bytes(fid, num_bytes, format_char_sequence, endian_character="<"):
+    """Read and unpack the next bytes from a binary file.
+    :param fid:
+    :param num_bytes: Sum of combination of {2, 4, 8}, e.g. 2, 6, 16, 30, etc.
+    :param format_char_sequence: List of {c, e, f, d, h, H, i, I, l, L, q, Q}.
+    :param endian_character: Any of {@, =, <, >, !}
+    :return: Tuple of read and unpacked values.
+    """
+    data = fid.read(num_bytes)
+    return struct.unpack(endian_character + format_char_sequence, data)
+
+CameraModel2 = collections.namedtuple("CameraModel", ["model_id", "model_name", "num_params"])
+Camera = collections.namedtuple("Camera", ["id", "model", "width", "height", "params"])
+BaseImage = collections.namedtuple("Image", ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"])
+Point3D = collections.namedtuple("Point3D", ["id", "xyz", "rgb", "error", "image_ids", "point2D_idxs"])
+
+class Image(BaseImage):
+    def qvec2rotmat(self):
+        return qvec2rotmat(self.qvec)
+
+CAMERA_MODELS = {
+    CameraModel2(model_id=0, model_name="SIMPLE_PINHOLE", num_params=3),
+    CameraModel2(model_id=1, model_name="PINHOLE", num_params=4),
+    CameraModel2(model_id=2, model_name="SIMPLE_RADIAL", num_params=4),
+    CameraModel2(model_id=3, model_name="RADIAL", num_params=5),
+    CameraModel2(model_id=4, model_name="OPENCV", num_params=8),
+    CameraModel2(model_id=5, model_name="OPENCV_FISHEYE", num_params=8),
+    CameraModel2(model_id=6, model_name="FULL_OPENCV", num_params=12),
+    CameraModel2(model_id=7, model_name="FOV", num_params=5),
+    CameraModel2(model_id=8, model_name="SIMPLE_RADIAL_FISHEYE", num_params=4),
+    CameraModel2(model_id=9, model_name="RADIAL_FISHEYE", num_params=5),
+    CameraModel2(model_id=10, model_name="THIN_PRISM_FISHEYE", num_params=12),
+}
+CAMERA_MODEL_IDS = dict([(camera_model.model_id, camera_model) for camera_model in CAMERA_MODELS])
+CAMERA_MODEL_NAMES = dict([(camera_model.model_name, camera_model) for camera_model in CAMERA_MODELS])
+
+
+def read_cameras_binary(path_to_model_file):
+    """
+    see: src/base/reconstruction.cc
+        void Reconstruction::WriteCamerasBinary(const std::string& path)
+        void Reconstruction::ReadCamerasBinary(const std::string& path)
+    """
+    cameras = {}
+    with open(path_to_model_file, "rb") as fid:
+        num_cameras = read_next_bytes(fid, 8, "Q")[0]
         for _ in range(num_cameras):
-            camera_id = struct.unpack("<I", f.read(4))[0]
-            model_id = struct.unpack("<i", f.read(4))[0]
-            width = struct.unpack("<Q", f.read(8))[0]
-            height = struct.unpack("<Q", f.read(8))[0]
-            params_num = {0: 4, 1: 4, 2: 4, 3: 5, 4: 8}.get(model_id, 4)
-            params = struct.unpack("<" + "d" * params_num, f.read(8 * params_num))
-            cameras[camera_id] = {
-                "model_id": model_id,
-                "width": width,
-                "height": height,
-                "params": params,
-            }
+            camera_properties = read_next_bytes(fid, num_bytes=24, format_char_sequence="iiQQ")
+            camera_id = camera_properties[0]
+            model_id = camera_properties[1]
+            model_name = CAMERA_MODEL_IDS[camera_properties[1]].model_name
+            width = camera_properties[2]
+            height = camera_properties[3]
+            num_params = CAMERA_MODEL_IDS[model_id].num_params
+            params = read_next_bytes(fid, num_bytes=8 * num_params, format_char_sequence="d" * num_params)
+            cameras[camera_id] = Camera(
+                id=camera_id, model=model_name, width=width, height=height, params=np.array(params)
+            )
+        assert len(cameras) == num_cameras
     return cameras
 
 
-def read_images_binary(path):
-    with open(path, "rb") as f:
-        num_images = struct.unpack("<Q", f.read(8))[0]
-        images = {}
-        for _ in range(num_images):
-            image_id = struct.unpack("<I", f.read(4))[0]
-            qw, qx, qy, qz = struct.unpack("<dddd", f.read(8*4))
-            tx, ty, tz = struct.unpack("<ddd", f.read(8*3))
-            camera_id = struct.unpack("<I", f.read(4))[0]
-
-            # Read null-terminated string safely
-            name_bytes = bytearray()
-            while True:
-                byte = f.read(1)
-                if byte == b'':
-                    raise EOFError("Unexpected end of file while reading image name")
-                if byte == b'\x00':
-                    break
-                name_bytes += byte
-            try:
-                name = name_bytes.decode('utf-8')
-            except UnicodeDecodeError:
-                print("Warning: failed to decode image name, skipping.")
-                continue
-
-            images[image_id] = {
-                "qw": qw, "qx": qx, "qy": qy, "qz": qz,
-                "tx": tx, "ty": ty, "tz": tz,
-                "camera_id": camera_id,
-                "name": name,
-            }
-
-            # skip 2D points (track) for now — they follow here, but aren't needed
-            num_points2D = struct.unpack("<Q", f.read(8))[0]
-            f.read(num_points2D * 3 * 8)  # x, y, point3D_id (each double)
-
+def read_images_binary(path_to_model_file):
+    """
+    see: src/base/reconstruction.cc
+        void Reconstruction::ReadImagesBinary(const std::string& path)
+        void Reconstruction::WriteImagesBinary(const std::string& path)
+    """
+    images = {}
+    with open(path_to_model_file, "rb") as fid:
+        num_reg_images = read_next_bytes(fid, 8, "Q")[0]
+        for _ in range(num_reg_images):
+            binary_image_properties = read_next_bytes(fid, num_bytes=64, format_char_sequence="idddddddi")
+            image_id = binary_image_properties[0]
+            qvec = np.array(binary_image_properties[1:5])
+            tvec = np.array(binary_image_properties[5:8])
+            camera_id = binary_image_properties[8]
+            image_name = b""
+            current_char = read_next_bytes(fid, 1, "c")[0]
+            while current_char != b"\x00":  # look for the ASCII 0 entry
+                image_name += current_char
+                current_char = read_next_bytes(fid, 1, "c")[0]
+            image_name = image_name.decode("utf-8")
+            num_points2D = read_next_bytes(fid, num_bytes=8, format_char_sequence="Q")[0]
+            x_y_id_s = read_next_bytes(fid, num_bytes=24 * num_points2D, format_char_sequence="ddq" * num_points2D)
+            xys = np.column_stack([tuple(map(float, x_y_id_s[0::3])), tuple(map(float, x_y_id_s[1::3]))])
+            point3D_ids = np.array(tuple(map(int, x_y_id_s[2::3])))
+            images[image_id] = Image(
+                id=image_id,
+                qvec=qvec,
+                tvec=tvec,
+                camera_id=camera_id,
+                name=image_name,
+                xys=xys,
+                point3D_ids=point3D_ids,
+            )
     return images
 
 
-def qvec2rotmat(qw, qx, qy, qz):
-    q = np.array([qw, qx, qy, qz], dtype=np.float64)
-    n = np.dot(q, q)
-    if n < np.finfo(float).eps:
-        return np.eye(3)
-    q *= np.sqrt(2.0 / n)
-    q = np.outer(q, q)
-    rot = np.array([
-        [1.0 - q[2, 2] - q[3, 3],       q[1, 2] - q[3, 0],       q[1, 3] + q[2, 0]],
-        [      q[1, 2] + q[3, 0], 1.0 - q[1, 1] - q[3, 3],       q[2, 3] - q[1, 0]],
-        [      q[1, 3] - q[2, 0],       q[2, 3] + q[1, 0], 1.0 - q[1, 1] - q[2, 2]],
-    ])
-    return rot
+def qvec2rotmat(qvec):
+    return np.array(
+        [
+            [
+                1 - 2 * qvec[2] ** 2 - 2 * qvec[3] ** 2,
+                2 * qvec[1] * qvec[2] - 2 * qvec[0] * qvec[3],
+                2 * qvec[3] * qvec[1] + 2 * qvec[0] * qvec[2],
+            ],
+            [
+                2 * qvec[1] * qvec[2] + 2 * qvec[0] * qvec[3],
+                1 - 2 * qvec[1] ** 2 - 2 * qvec[3] ** 2,
+                2 * qvec[2] * qvec[3] - 2 * qvec[0] * qvec[1],
+            ],
+            [
+                2 * qvec[3] * qvec[1] - 2 * qvec[0] * qvec[2],
+                2 * qvec[2] * qvec[3] + 2 * qvec[0] * qvec[1],
+                1 - 2 * qvec[1] ** 2 - 2 * qvec[2] ** 2,
+            ],
+        ]
+    )
 
 
-def cameras_to_json(sparse_folder):
-    cameras = read_cameras_binary(os.path.join(sparse_folder, "cameras.bin"))
-    images = read_images_binary(os.path.join(sparse_folder, "images.bin"))
+def colmap_to_json(
+    recon_dir: Path,
+    camera_mask_path: Optional[Path] = None,
+    image_id_to_depth_path: Optional[Dict[int, Path]] = None,
+    image_rename_map: Optional[Dict[str, str]] = None,
+    ply_filename="sparse_pc.ply",
+    keep_original_world_coordinate: bool = False,
+    use_single_camera_mode: bool = True,
+) -> int:
+    """Converts COLMAP's cameras.bin and images.bin to a JSON file.
+
+    Args:
+        recon_dir: Path to the reconstruction directory, e.g. "sparse/0"
+        output_dir: Path to the output directory.
+        camera_model: Camera model used.
+        camera_mask_path: Path to the camera mask.
+        image_id_to_depth_path: When including sfm-based depth, embed these depth file paths in the exported json
+        image_rename_map: Use these image names instead of the names embedded in the COLMAP db
+        keep_original_world_coordinate: If True, no extra transform will be applied to world coordinate.
+                    Colmap optimized world often have y direction of the first camera pointing towards down direction,
+                    while nerfstudio world set z direction to be up direction for viewer.
+    Returns:
+        The number of registered images.
+    """
+
+    # TODO(1480) use pycolmap
+    # recon = pycolmap.Reconstruction(recon_dir)
+    # cam_id_to_camera = recon.cameras
+    # im_id_to_image = recon.images
+    cam_id_to_camera = read_cameras_binary(recon_dir / "cameras.bin")
+    im_id_to_image = read_images_binary(recon_dir / "images.bin")
+    if set(cam_id_to_camera.keys()) != {1}:
+        print(f"[bold yellow]Warning: More than one camera is found in {recon_dir}")
+        print(cam_id_to_camera)
+        use_single_camera_mode = False  # update bool: one camera per frame
+        out = {}  # out = {"camera_model": parse_colmap_camera_params(cam_id_to_camera[1])["camera_model"]}
+    else:  # one camera for all frames
+        out = parse_colmap_camera_params(cam_id_to_camera[1])
 
     frames = []
-    for image_id in sorted(images.keys()):
-        img = images[image_id]
-        cam = cameras[img["camera_id"]]
+    for im_id, im_data in im_id_to_image.items():
+        # NB: COLMAP uses Eigen / scalar-first quaternions
+        # * https://colmap.github.io/format.html
+        # * https://github.com/colmap/colmap/blob/bf3e19140f491c3042bfd85b7192ef7d249808ec/src/base/pose.cc#L75
+        # the `rotation_matrix()` handles that format for us.
 
-        R = qvec2rotmat(img["qw"], img["qx"], img["qy"], img["qz"])
-        t = np.array([img["tx"], img["ty"], img["tz"]]).reshape(3,1)
+        # TODO(1480) BEGIN use pycolmap API
+        # rotation = im_data.rotation_matrix()
+        rotation = qvec2rotmat(im_data.qvec)
 
-        # Compose 4x4 transform matrix (camera-to-world)
-        transform = np.eye(4)
-        transform[:3, :3] = R
-        transform[:3, 3:] = t
+        translation = im_data.tvec.reshape(3, 1)
+        w2c = np.concatenate([rotation, translation], 1)
+        w2c = np.concatenate([w2c, np.array([[0, 0, 0, 1]])], 0)
+        c2w = np.linalg.inv(w2c)
+        # Convert from COLMAP's camera coordinate system (OpenCV) to ours (OpenGL)
+        c2w[0:3, 1:3] *= -1
+        if not keep_original_world_coordinate:
+            c2w = c2w[np.array([0, 2, 1, 3]), :]
+            c2w[2, :] *= -1
 
-        # Extract intrinsics assuming PINHOLE camera model (model_id==1)
-        if cam["model_id"] == 1:
-            fx, fy, cx, cy = cam["params"][:4]
-            intrinsics = {"fx": fx, "fy": fy, "cx": cx, "cy": cy}
-        else:
-            intrinsics = {}
+        name = im_data.name
+        if image_rename_map is not None:
+            name = image_rename_map[name]
+        name = Path(f"./images/{name}")
 
         frame = {
-            "file_path": img["name"],
-            "transform_matrix": transform.tolist(),
-            "intrinsics": intrinsics
+            "file_path": name.as_posix(),
+            "transform_matrix": c2w.tolist(),
+            "colmap_im_id": im_id,
         }
+        if camera_mask_path is not None:
+            frame["mask_path"] = camera_mask_path.relative_to(camera_mask_path.parent.parent).as_posix()
+        if image_id_to_depth_path is not None:
+            depth_path = image_id_to_depth_path[im_id]
+            frame["depth_file_path"] = str(depth_path.relative_to(depth_path.parent.parent))
+
+        if not use_single_camera_mode:  # add the camera parameters for this frame
+            frame.update(parse_colmap_camera_params(cam_id_to_camera[im_data.camera_id]))
+
         frames.append(frame)
 
-    return {"frames": frames}
+    out["frames"] = frames
 
+    applied_transform = None
+    if not keep_original_world_coordinate:
+        applied_transform = np.eye(4)[:3, :]
+        applied_transform = applied_transform[np.array([0, 2, 1]), :]
+        applied_transform[2, :] *= -1
+        out["applied_transform"] = applied_transform.tolist()
 
-def read_points3D_binary(path):
-    """Load points3D.bin from COLMAP."""
-    with open(path, "rb") as f:
-        num_points = struct.unpack("<Q", f.read(8))[0]
-        points = []
-        for _ in range(num_points):
-            point_id = struct.unpack("<Q", f.read(8))[0]
-            x, y, z = struct.unpack("<ddd", f.read(8*3))
-            r, g, b = struct.unpack("<BBB", f.read(3))
-            error = struct.unpack("<d", f.read(8))[0]
-            track_length = struct.unpack("<Q", f.read(8))[0]
-            track = []
-            for _ in range(track_length):
-                image_id = struct.unpack("<I", f.read(4))[0]
-                point2d_idx = struct.unpack("<I", f.read(4))[0]
-                track.append((image_id, point2d_idx))
+    # # create ply from colmap
+    # assert ply_filename.endswith(".ply"), f"ply_filename: {ply_filename} does not end with '.ply'"
+    # create_ply_from_colmap(
+    #     ply_filename,
+    #     recon_dir,
+    #     output_dir,
+    #     torch.from_numpy(applied_transform).float() if applied_transform is not None else None,
+    # )
+    # out["ply_file_path"] = ply_filename
 
-            points.append({
-                "id": point_id,
-                "xyz": (x, y, z),
-                "rgb": (r, g, b),
-                "error": error,
-                "track": track
-            })
-    return points
+    # with open(output_dir / "transforms.json", "w", encoding="utf-8") as f:
+    #     json.dump(out, f, indent=4)
 
-
-def normalize_points(points):
-    """
-    Normalize points to fit inside unit sphere.
-    Returns:
-        - normalized points
-        - translation vector
-        - scale factor
-    """
-    xyz = np.array(points)
-    centroid = np.mean(xyz, axis=0)
-    xyz_centered = xyz - centroid
-
-    scale = np.max(np.linalg.norm(xyz_centered, axis=1))
-    xyz_normalized = xyz_centered / scale
-
-    return xyz_normalized, centroid, scale
+    return out
 
 
 def _load_renderings(root_fp: Path, scene: str):
@@ -181,7 +395,13 @@ def _load_renderings(root_fp: Path, scene: str):
     sparse_dir = data_dir / "sparse/0"
 
     # 1. Load camera data from COLMAP and images
-    meta = cameras_to_json(sparse_dir)
+    meta = colmap_to_json(
+        recon_dir=sparse_dir,
+        camera_mask_path=None,
+        image_id_to_depth_path=None,
+        image_rename_map=None,
+        keep_original_world_coordinate=False,
+    )
 
     images = []
     camtoworlds = []
@@ -190,36 +410,35 @@ def _load_renderings(root_fp: Path, scene: str):
     scale_down_factor = 4  # images_4 are 4x smaller than original
 
     for frame in meta["frames"]:
-        fname = os.path.join(data_dir, "images_4", frame["file_path"])
+        fname = os.path.join(data_dir, "images_4", frame["file_path"].replace("images/", ""))
         rgba = imageio.imread(fname)
 
         camtoworlds.append(np.array(frame["transform_matrix"]))
         images.append(rgba)
 
-        intr = frame["intrinsics"]
-        if "fx" in intr and "fy" in intr:
-            focals.append((intr["fx"] / scale_down_factor, intr["fy"] / scale_down_factor))
+        if "fl_x" in meta and "fl_y" in meta:
+            focals.append((meta["fl_x"] / scale_down_factor, meta["fl_y"] / scale_down_factor))
         else:
             focals.append(None)
 
-        if "cx" in intr and "cy" in intr:
-            centers.append(np.array([intr["cx"] / scale_down_factor, intr["cy"] / scale_down_factor]))
+        if "cx" in meta and "cy" in meta:
+            centers.append(np.array([meta["cx"] / scale_down_factor, meta["cy"] / scale_down_factor]))
         else:
             centers.append(None)
 
     images = np.stack(images, axis=0)
     camtoworlds = np.stack(camtoworlds, axis=0)
 
-    # 2. Normalize using COLMAP point cloud
-    points = read_points3D_binary(sparse_dir / "points3D.bin")
-    xyz = np.array([pt['xyz'] for pt in points])
+    # # 2. Normalize using COLMAP point cloud
+    # points = read_points3D_binary(sparse_dir / "points3D.bin")
+    # xyz = np.array([pt['xyz'] for pt in points])
 
     # centroid = xyz.mean(axis=0)
     # max_dist = np.max(np.linalg.norm(xyz - centroid, axis=1))
 
     # camtoworlds[:, :3, 3] -= centroid
-    camtoworlds[:, :3, 3] -= np.array([0.0, -1.5, 3.0])  # Centering at origin
-    camtoworlds[:, :3, 3] /= 1.0
+    # camtoworlds[:, :3, 3] -= np.array([0.0, -1.5, 3.0])  # Centering at origin
+    # camtoworlds[:, :3, 3] *= 2.0
 
     # 3. Normalize intrinsics as usual
     h, w = images.shape[1:3]
@@ -312,11 +531,11 @@ class MipNeRFDataset(BaseDataset):
     
     def get_points(self) -> np.ndarray:
 
-        ply_path = f"{self.config.data_root}/{self.config.scene}/sparse/0/points3D.bin"
-        pts = read_points3D_binary(ply_path)
-        pts = np.array([p["xyz"] for p in pts], dtype=np.float64)
+        # ply_path = f"{self.config.data_root}/{self.config.scene}/sparse/0/points3D.bin"
+        # pts = read_points3D_binary(ply_path)
+        # pts = np.array([p["xyz"] for p in pts], dtype=np.float64)
 
-        pts, self.centroid, self.scale = normalize_points(pts)
+        # pts, self.centroid, self.scale = normalize_points(pts)
         
         return None
     
