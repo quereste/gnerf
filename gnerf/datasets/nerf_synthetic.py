@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import json
 import torch
+import open3d as o3d
 
 import numpy as np
 import imageio.v2 as imageio
@@ -52,6 +53,8 @@ class NeRFSyntheticDatasetConfig(BaseDatasetConfig):
 
     _target: Type = field(default_factory=lambda: NeRFSyntheticDataset)
     """Target class for the NeRFSyntheticDataset."""
+    data_root: Path = Path("data/nerf_dataset")
+    """Path to the dataset."""
     scene: Literal["chair", "drums", "ficus", "hotdog", "lego", "materials", "mic", "ship"] = "ficus"
     """Scene name."""
     width: int = 800
@@ -123,6 +126,44 @@ class NeRFSyntheticDataset(BaseDataset):
         data = self.fetch_data(index)
         data = self.preprocess(data)
         return data
+    
+    def get_points(self) -> np.ndarray:
+        
+        # Load .ply file and initialize means
+        ply_path1 = f"{self.config.data_root}/{self.config.scene}/means_lod14@20000.ply"
+        ply_path2 = f"{self.config.data_root}/{self.config.scene}/means_lod15@20000.ply"
+        try:
+            pcd1 = o3d.io.read_point_cloud(ply_path1)
+            pcd2 = o3d.io.read_point_cloud(ply_path2)
+            pts1 = np.asarray(pcd1.points)
+            pts2 = np.asarray(pcd2.points)
+            pts = np.concatenate([pts1, pts2], axis=0)
+
+            print(f"Loaded pointclud with {pts.shape} points.")
+        except:
+            print(f"Failed to load point cloud from {ply_path1} or {ply_path2}.")
+            return None
+
+        return pts
+    
+    def get_points_eval(self, path: Path) -> np.ndarray:
+        
+        # Load .ply file and initialize means
+        ply_files = list(Path(path).glob("*.ply"))
+        if not ply_files:
+            print(f"No .ply files found in {path}.")
+            return None
+        ply_path = str(ply_files[0])
+        try:
+            pcd = o3d.io.read_point_cloud(ply_path)
+            pts = np.asarray(pcd.points)
+
+            print(f"Loaded pointclud with {pts.shape} points.")
+        except:
+            print(f"Failed to load point cloud from {ply_path}.")
+            return None
+
+        return pts
 
     def preprocess(self, data):
         """Process the fetched / cached data with randomness."""

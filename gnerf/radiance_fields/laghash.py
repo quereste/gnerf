@@ -91,8 +91,6 @@ class LagHashRadianceFieldConfig(InstantiateConfig):
     """Whether to use view directions."""
     n_features_per_gauss: int = 10
     """Number of features per Gaussian."""
-    fixed_std: bool = False
-    """Whether to use fixed standard deviation."""
     load_model_path: str = ""
     """Path to the model to load."""
     n_gausses: int = 40000
@@ -104,7 +102,7 @@ class LagHashRadianceFieldConfig(InstantiateConfig):
 class LagHashRadianceField(torch.nn.Module):
     """Lagrangian Hashes Radiance Field"""
 
-    def __init__(self, config: LagHashRadianceFieldConfig, std_decay_factor, device = "cpu"):
+    def __init__(self, config: LagHashRadianceFieldConfig, std_decay_factor, means = None, device = "cpu"):
         self.config: LagHashRadianceFieldConfig = config
         super().__init__()
 
@@ -136,14 +134,14 @@ class LagHashRadianceField(torch.nn.Module):
 
         self.knn_algorithm = self.config.knn_algorithm.setup()
         self.mlp_base = lagrangian_hash.NetworkwithSplashEncoding(
-            fixed_std = self.config.fixed_std,
             decay_factor=std_decay_factor,
             n_features_per_gauss=self.config.n_features_per_gauss,
             n_gausses=self.config.n_gausses,
             output_dim=1 + self.config.geo_feat_dim,
             net_depth=1,
             net_width=64,
-            knn_algorithm=self.knn_algorithm
+            knn_algorithm=self.knn_algorithm,
+            means=means
         )
 
         if self.config.geo_feat_dim > 0:

@@ -1,8 +1,8 @@
 import logging
 
 from typing import Callable, Optional, List
-from arrgh import arrgh
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -28,7 +28,6 @@ class NetworkwithSplashEncoding(nn.Module):
         self,
         n_features_per_gauss: int = 3,
         n_gausses: int = 10000,  
-        fixed_std: bool = False,
         decay_factor: int = 1,
         output_dim: int = 3,  # The number of output tensor channels.
         net_depth: int = 2,  # The depth of the MLP.
@@ -36,14 +35,15 @@ class NetworkwithSplashEncoding(nn.Module):
         hidden_activation: str = "ReLU",
         output_activation: str = "None",
         knn_algorithm: Optional[BaseKNN] = None,
+        means: Optional[np.ndarray] = None,  # Optional means for the gaussians
     ):
         super().__init__()
         
-        self.encoding = SplashEncoding(fixed_std=fixed_std, 
-                                       decay_factor=decay_factor, 
+        self.encoding = SplashEncoding(decay_factor=decay_factor, 
                                        n_features_per_gauss=n_features_per_gauss, 
                                        n_gausses=n_gausses,
-                                       knn_algorithm=knn_algorithm)
+                                       knn_algorithm=knn_algorithm,
+                                       means=means)
         
         input_dim = n_features_per_gauss
         self.mlp = tcnn.Network(

@@ -15,7 +15,7 @@ class BaseDatasetConfig(InstantiateConfig):
     """Base class for dataset configuration."""
     name: str = "Synthetic"
     """Name of the dataset."""
-    data_root: Path = Path("data/nerf_dataset")
+    data_root: Path = Path("data")
     """Path to the dataset."""
     scene: str = "ficus"
     """Scene name."""

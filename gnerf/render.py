@@ -51,9 +51,12 @@ class Renderer:
 
         log.info('Starting evaluation')
 
+        # Load the dataset
+        test_dataset = config.dataset.setup(split="test", device=self.device)
+
         # Load the model
         std_decay_factor = (config.std_final_factor / config.std_init_factor) ** (config.size_decay_every / config.max_steps)
-        radiance_field = config.model.setup(std_decay_factor=std_decay_factor, device=self.device).to(self.device)
+        radiance_field = config.model.setup(std_decay_factor=std_decay_factor, means=test_dataset.get_points_eval(config.get_output_path()), device=self.device).to(self.device)
 
         model_state_dict = torch.load(config.get_output_path() / "model.pth", map_location=self.device)
 
@@ -89,9 +92,6 @@ class Renderer:
         # model_state_dict['occupancy']['binaries'].fill_(True)
         estimator.load_state_dict(model_state_dict['occupancy'])
         estimator.eval()
-
-        # Load the dataset
-        test_dataset = config.dataset.setup(split="test", device=self.device)
         
         psnrs = []
         with torch.no_grad():

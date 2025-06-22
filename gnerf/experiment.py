@@ -95,12 +95,8 @@ class TrainerConfig(ExperimentConfig):
     """Pause the training until the user clicks the start button in the viewer."""
     max_steps: int = 20000
     """Maximum number of training steps."""
-    log_every: int = 20000
-    """Logging interval."""
     save_every: int = 1000
     """Model saving interval."""
-    visualize_every: int = 500
-    """Visualization interval."""
     std_init_factor: float = 50
     """Initial standard deviation factor."""
     std_final_factor: float = 5
@@ -136,21 +132,19 @@ class Trainer(nn.Module):
     def setup(self):
 
         # Setup the dataset
-        if self.config.dataset.scene in TANKS_TEMPLE_SCENES or self.config.dataset.scene in NERF_SYNTHETIC_SCENES:
-            self.train_dataset: BaseDataset = self.config.dataset.setup(split="train", num_rays=self.config.dataset.init_batch_size, device=self.device)
-            self.weight_decay = self.config.optimizer.weight_decay
-            if self.config.optimizer.weight_decay is None:
-                self.weight_decay = self.train_dataset.get_weight_decay()
-        else:
-            error_message = f"Invalid scene: {self.config.dataset.scene}"
-            raise ValueError(error_message)
+        self.train_dataset: BaseDataset = self.config.dataset.setup(split="train", num_rays=self.config.dataset.init_batch_size, device=self.device)
+        self.weight_decay = self.config.optimizer.weight_decay
+        if self.config.optimizer.weight_decay is None:
+            self.weight_decay = self.train_dataset.get_weight_decay()
 
         # Prepare estimator and model
         self.estimator = OccGridEstimator(roi_aabb=self.config.model.aabb, resolution=self.config.model.grid_resolution, levels=self.config.model.grid_nlvl).to(self.device)
 
         self.grad_scaler = GradScaler(2**10)
         std_decay_factor = (self.config.std_final_factor / self.config.std_init_factor) ** (self.config.size_decay_every / self.config.max_steps)
-        self.radiance_field: LagHashRadianceField = self.config.model.setup(std_decay_factor=std_decay_factor, device=self.device).to(self.device)
+
+        means = self.train_dataset.get_points()
+        self.radiance_field: LagHashRadianceField = self.config.model.setup(std_decay_factor=std_decay_factor, means=means, device=self.device).to(self.device)
 
         num_params = sum(p.numel() for p in self.radiance_field.parameters() if p.requires_grad)
         CONSOLE.log(f"Number of parameters: {num_params/1e6:.2f}M")
@@ -168,6 +162,9 @@ class Trainer(nn.Module):
                                                         alpha_thre = self.config.alpha_thre,
                                                         device = self.device)
             
+            self.viewer.display_aabb(self.config.model.aabb)
+            self.viewer.display_cameras(self.train_dataset.camtoworlds, self.train_dataset.K, self.train_dataset.images.detach().cpu().numpy())
+            
             # Wait for the user to click the start button in viser
             if self.config.pause_on_start:
                 while not self.viewer.start_button.value:
@@ -178,7 +175,6 @@ class Trainer(nn.Module):
 
         # Training
         CONSOLE.log('Starting training')
-        tic = time.time()
         self.distance_field = None
         for step in tqdm(range(self.config.max_steps + 1), desc="Training"):
             self.radiance_field.train()
@@ -233,22 +229,11 @@ class Trainer(nn.Module):
             loss = torch.tensor(0.0, device=self.device)
             loss_warm_up = calculate_loss_warmup(step, self.config.max_steps)
             mip_loss = mip_loss.mean() # distortion loss
-            sigma_loss, surf_loss, i = 0, 0, 0
-            
-            # TODO: tu coś trzeba pomajstrować
-            # for idx in range(radiance_field.n_levels):
-            #     resolution = radiance_field.mlp_base.encoding.resolutions[idx]
-            #     stds = radiance_field.mlp_base.encoding.get_stds(idx)
-            #     if stds is not None:
-            #         sigma_loss += calculate_lod_sigma_loss(resolution, stds)
-            #         i += 1
 
             loss += calculate_smooth_l1_loss(rgb, pixels)
             # if self.config.weight_surface:
             #     surf_loss = weighted_squared_gausses_distance.sum() * self.config.weight_surface
             #     loss += surf_loss
-            if self.config.weight_sigma and (not self.config.model.fixed_std):
-                loss += self.config.weight_sigma * loss_warm_up * sigma_loss
             if self.config.weight_mip:
                 loss += self.config.weight_mip * mip_loss
 
@@ -280,22 +265,14 @@ class Trainer(nn.Module):
                 print(f"Number of gaussians after densification: {self.radiance_field.mlp_base.encoding.means.shape[0]}")
 
             # Unfreeze means after 75% of training
-            if step == int(self.config.max_steps * 0.75):
-                print("Unfreezing means for training")
+            if step == int(self.config.max_steps * 0.25):
+                print("Unfreezing means")
                 self.radiance_field.mlp_base.encoding.unfreeze_means()
-                
-            if step % self.config.log_every == 0:
-                elapsed_time = time.time() - tic
-                CONSOLE.log(
-                    f"Training info: "
-                    f"step={step} | elapsed_time={elapsed_time:.2f}s | "
-                    f"whole_loss={loss:.5f} | surf_loss={surf_loss:.5f} | " 
-                    f"sigma_loss={sigma_loss:.5f} | n_rendering_samples={n_rendering_samples:d} | "
-                    f"max_depth={depth.max():.3f} | "
-                )
-            
-            if (step % self.config.size_decay_every == self.config.size_decay_every-1) and self.config.model.fixed_std:
-                self.radiance_field.mlp_base.encoding.update_factor()
+
+                        # Freeze means after 75% of training
+            if step == int(self.config.max_steps * 0.75):
+                print("Freezing means")
+                self.radiance_field.mlp_base.encoding.freeze_means()
 
             if step % self.config.save_every == 0:
                 state_dict = {

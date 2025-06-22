@@ -1,32 +1,23 @@
-import math
-import logging
 import numpy as np
-import faiss
-import faiss.contrib.torch_utils
 
-import time
 import torch
 import torch.nn as nn
-import torch.autograd.profiler as profiler
 
 from typing import Optional
 from utils.general_utils import append_sys_path
 from gnerf.lagrangian_hash.knn.knn_algorithms import BaseKNN
-import open3d as o3d
-
 
 append_sys_path()
 
-log = logging.getLogger(__name__)
 
 class SplashEncoding(nn.Module):
     def __init__(
         self,
-        fixed_std: bool = False,
         decay_factor: int = 1,
         n_gausses: int = 10000,
         n_features_per_gauss: int = 3,
-        knn_algorithm: Optional[BaseKNN] = None
+        knn_algorithm: Optional[BaseKNN] = None,
+        means: Optional[np.ndarray] = None,
     ):
         """
         """
@@ -36,52 +27,33 @@ class SplashEncoding(nn.Module):
         self.decay_factor = decay_factor
         self.n_features_per_gauss = n_features_per_gauss
 
-        r = 0.125
-        self.total_gaus = self.init_mean()
+        if means is not None:
+            self.means = torch.tensor(means, dtype=torch.float32, device='cuda')
+        else:
+            self.means = self.init_mean(n_gausses)
+
+        # if self.means.shape[0] > 40000:
+        #     idx = np.random.choice(self.means.shape[0], 40000, replace=False)
+        #     self.means = self.means[idx]
+
+        self.means = nn.Parameter(self.means, requires_grad=False)
+
+        self.total_gaus = self.means.shape[0]
         self.feats = (torch.randn(self.total_gaus, self.n_features_per_gauss) * 1e-2).to(device='cuda')
         self.feats = nn.Parameter(self.feats)
-        self.means = nn.Parameter(self.means, requires_grad=False)
         self.gaussian_constant = torch.sqrt(torch.tensor(2 * torch.pi, device='cuda'))
         self.log_diag_cov_2d = nn.Parameter(torch.log(torch.ones(self.total_gaus, 2, device='cuda') * 0.01))
         self.knn = knn_algorithm
+
     
-    # def init_mean(self):
-        # N = self.total_gaus
-        # log.info(f'Total number of gauss: {self.total_gaus}')
-        # pts = np.random.randn(N, 3)
-        # r = np.sqrt(np.random.rand(N, 1))
-        # pts = pts / np.linalg.norm(pts, axis=1)[:, None] * r
-        # pts = pts * 0.5 + 0.5 # [0.25 ... 0.75]
+    def init_mean(self, N):
+        print(f'Total number of gauss: {N}')
+        pts = np.random.randn(N, 3)
+        r = np.sqrt(np.random.rand(N, 1))
+        pts = pts / np.linalg.norm(pts, axis=1)[:, None] * r
+        pts = pts * 0.5 + 0.5 # [0.25 ... 0.75]
         
-        # self.means = torch.tensor(pts, dtype=torch.float32, device='cuda')
-
-    def init_mean(self):
-        # Load .ply file and initialize means
-        ply_path1 = "/workspace/gnerf/means_lod14@20000.ply"
-        ply_path2 = "/workspace/gnerf/means_lod15@20000.ply"
-        pcd1 = o3d.io.read_point_cloud(ply_path1)
-        pcd2 = o3d.io.read_point_cloud(ply_path2)
-        pts1 = np.asarray(pcd1.points)
-        pts2 = np.asarray(pcd2.points)
-        pts = np.concatenate([pts1, pts2], axis=0)
-
-        ply_path = "/workspace/gnerf/results/lego/2025-06-21_10-38-22/means@20000.ply"
-        pcd = o3d.io.read_point_cloud(ply_path)
-        pts = np.asarray(pcd.points)
-
-        # if pts.shape[0] > 40000:
-        #     idx = np.random.choice(pts.shape[0], 40000, replace=False)
-        #     pts = pts[idx]
-
-        self.means = torch.tensor(pts, dtype=torch.float32, device='cuda')
-
-        print(f"Loaded pointclud with {self.means.shape} points.")
-
-        return self.means.shape[0]
-
-
-    def update_factor(self):
-        self.covariances = self.covariances * self.decay_factor
+        return torch.tensor(pts, dtype=torch.float32, device='cuda')
 
 
     def get_means(self):
@@ -146,9 +118,12 @@ class SplashEncoding(nn.Module):
 
 
     def unfreeze_means(self):
-        # Unfreeze means for training
         self.means.requires_grad_(True)
-    
+
+
+    def freeze_means(self):
+        self.means.requires_grad_(False)
+        
 
     def _calculate(self, coords, nearest_gausses_indicies, sq_dists, batch_size=100000):
         num_coords = coords.shape[0]

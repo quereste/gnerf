@@ -4,6 +4,7 @@ from typing import Dict, Union
 
 from gnerf.experiment import TrainerConfig
 from gnerf.datasets.nerf_synthetic import NeRFSyntheticDatasetConfig
+from gnerf.datasets.mip_nerf_360 import MipNeRFDatasetConfig
 from gnerf.radiance_fields.laghash import LagHashRadianceFieldConfig
 from gnerf.lagrangian_hash.knn.knn_algorithms import TorchKNNConfig, FaissKNNConfig, FaissIVFKNNConfig, OptixKNNConfig
 

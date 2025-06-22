@@ -172,6 +172,60 @@ class Viewer:
             point_shape="circle"
         )
 
+
+    def display_aabb(self, aabb: torch.Tensor) -> None:
+        """
+        Display the axis-aligned bounding box (AABB) in the viewer.
+        """
+        mesh = trimesh.creation.box(tuple((aabb[3:] - aabb[:3]).detach().cpu().numpy()))
+        self.server.scene.add_mesh_simple(
+            name="/aabb",
+            vertices=mesh.vertices,
+            faces=mesh.faces,
+            color=(0, 0, 0),
+            wireframe=True,
+            visible=False
+        )
+
+    
+    def display_cameras(self, c2ws: torch.Tensor, K: torch.Tensor, images: np.ndarray) -> None:
+        """
+        Display the cameras in the viewer.
+        """
+        K = K.detach().cpu().numpy()
+        c2ws = c2ws.detach().cpu().numpy()
+
+        for idx, c2w in enumerate(c2ws):
+            # If image is RGBA, convert background to white
+            image = images[idx]
+            if image.shape[-1] == 4:
+                rgb = image[..., :3].astype(np.float32)
+                alpha = image[..., 3:4].astype(np.float32) / 255.0
+                white_bg = np.ones_like(rgb) * 255
+                image = rgb * alpha + white_bg * (1 - alpha)
+                image = np.clip(image, 0, 255).astype(np.uint8)
+            
+            # Downscale image 2x using nearest neighbor
+            h, w = image.shape[:2]
+            fov_x = 2 * np.arctan(w / (2 * K[0, 0]))
+            aspect = w / h
+
+            # Rotate camera to match the viewer's coordinate system
+            R = vtf.SO3.from_matrix(c2w[:3, :3])
+            R = R @ vtf.SO3.from_x_radians(np.pi)
+
+            # Add camera frustum to the scene
+            self.server.scene.add_camera_frustum(
+                f"/cameras/cam_{idx}",
+                fov=fov_x,
+                aspect=aspect,
+                scale=0.2,
+                position=c2w[:3, 3],
+                wxyz=R.wxyz,
+                image=image,
+                visible=True
+            )
+
     
     def display_occupancy_grid(self, occ_grid: torch.Tensor, aabb: torch.Tensor) -> None:
         """
