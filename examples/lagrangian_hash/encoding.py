@@ -5,7 +5,7 @@ import numpy as np
 
 import torch
 import torch.nn as nn
-
+import trimesh
 import laghash.ops.grid as grid_ops
 from examples.utils.general_utils import append_sys_path
 
@@ -93,13 +93,16 @@ class SplashEncoding(nn.Module):
         # self.total_feats = sum(self.num_feats)
         # self.total_gaus = sum(self.num_gaus)
         self.total_gaus = n_gausses # fixed number of gauss for now
-        # xd 
+        # xd
         # self.feats = torch.randn(self.total_feats, self.n_features_per_level) * 1e-2
         # self.feats = nn.Parameter(self.feats)
-        self.feats = (torch.randn(self.total_gaus, self.n_features_per_gauss) * 1e-2).to(device='cuda')
-        self.feats = nn.Parameter(self.feats)
         self.init_mean()
         self.means = nn.Parameter(self.means)
+        self.means_coords = nn.Parameter(self.means_coords)
+
+        self.feats = (torch.randn(self.total_gaus, self.n_features_per_gauss) * 1e-2).to(device='cuda')
+        self.feats = nn.Parameter(self.feats)
+
         # xd
         # self.stds = torch.ones(self.total_gaus, 1).cuda()
         # self.init_std(std_init_factor)
@@ -111,14 +114,48 @@ class SplashEncoding(nn.Module):
         self.n_neighbours = n_neighbours
     
     def init_mean(self):
-        N = self.total_gaus
+        # Load mesh from lego.obj
+        mesh = trimesh.load('~/hotdog.obj', process=False, force='mesh')
+        vertices = mesh.vertices  # (V, 3) numpy array
+        faces = mesh.faces  # (F, 3) numpy array
+
+        # Rotate vertices 90 degrees around x axis
+        rot_mat = np.array([
+            [1, 0, 0],
+            [0, 0, -1],
+            [0, 1, 0]
+        ], dtype=np.float32)
+        vertices = vertices @ rot_mat.T
+
+        self.faces = torch.tensor(faces, dtype=torch.int64, device='cuda')
+        print(f'Mesh vertices shape: {vertices.shape}')
+        print(f'Mesh faces shape: {faces.shape}')
+
+        # Set total_gaus to three times the number of mesh faces
+        self.total_gaus = faces.shape[0] * 3
         log.info(f'Total number of gauss: {self.total_gaus}')
-        pts = np.random.randn(N, 3)
-        r = np.sqrt(np.random.rand(N, 1))
-        pts = pts / np.linalg.norm(pts, axis=1)[:, None] * r
-        pts = pts * 0.25 + 0.5 # [0.25 ... 0.75]
-        
+
+        # Sample three points uniformly on each mesh face
+        pts = []
+        weights = []
+        ordered_vertices = []
+
+        for face in faces:
+            face_vertices = vertices[face]
+            for _ in range(3):  # Three points per face
+                weight = np.random.dirichlet([1, 1, 1])  # Random barycentric coordinates
+                point = np.dot(weight, face_vertices)
+                pts.append(point)
+                weights.append(weight)
+                ordered_vertices.append(face_vertices)
+
+        pts = np.array(pts, dtype=np.float32)
+        weights = np.array(weights, dtype=np.float32)
+        self.means_coords = torch.tensor(weights, dtype=torch.float32, device='cuda')
         self.means = torch.tensor(pts, dtype=torch.float32, device='cuda')
+        self.vertices = torch.tensor(ordered_vertices, dtype=torch.float32, device='cuda')
+        print(f'Means shape: {self.means_coords.shape}')
+        print(f'vertices shape:  {self.vertices.shape}')
 
     # xd
     # def init_std(self, std_init_factor):
@@ -145,7 +182,9 @@ class SplashEncoding(nn.Module):
         #     return means
         # else:
         #     return None
-        return self.means
+        #return self.means
+        normalized_means_coords = self.means_coords / torch.sum(self.means_coords, dim=-1, keepdim=True)
+        return torch.sum(normalized_means_coords.unsqueeze(-1) * self.vertices, dim=1)
 
 
     def get_stds(self):
@@ -216,7 +255,7 @@ class SplashEncoding(nn.Module):
     def _calculate(self, coords, nearest_gausses_indicies, batch_size=1000):
         num_coords = coords.shape[0]
         feature_dim = self.feats.shape[1]
-
+        temp_means = self.get_means()
         feature_vector = torch.zeros((num_coords, feature_dim), device=coords.device)
 
         for i in range(0, num_coords, batch_size):
@@ -225,7 +264,7 @@ class SplashEncoding(nn.Module):
 
             nearest_features = self.feats[batch_indices]  # [batch_size, num_nearest, feature_dim]
 
-            diff = batch_coords[:, None, :] - self.means[batch_indices]  # [batch_size, num_nearest, 3]
+            diff = batch_coords[:, None, :] - temp_means[batch_indices]  # [batch_size, num_nearest, 3]
             sq_dist = torch.sum(diff ** 2, dim=-1, keepdim=True)  # [batch_size, num_nearest, 1]
 
             stds = torch.abs(self.stds[batch_indices])  # [batch_size, num_nearest]
